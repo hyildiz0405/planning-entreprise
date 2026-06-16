@@ -12,7 +12,8 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-st.set_page_config(page_title="Gestion de Plannings Professionnels", layout="wide")
+# --- CONFIGURATION INITIALE DE L'APPLICATION ---
+st.set_page_config(page_title="Planning Entreprise", page_icon="🏗️", layout="wide")
 
 # --- CONFIGURATION DE LA PERSISTANCE (JSON) ---
 FICHIER_DONNEES = "donnees.json"
@@ -296,7 +297,7 @@ with onglet_actif[0]:
         else:
             st.session_state["emp_filtre_key"] = user["email"]
 
-    # --- SÉCURITÉ FORMULAIRE D'ÉDITION RE-VÉRIFIÉE ---
+    # --- SÉCURITÉ FORMULAIRE D'ÉDITION ---
     if st.session_state["id_chantier_edition"] is not None:
         chantier_a_editer = next((c for c in st.session_state["plannings"] if c["id"] == st.session_state["id_chantier_edition"]), None)
         if chantier_a_editer:
@@ -367,7 +368,6 @@ with onglet_actif[0]:
                             st.markdown(f"**Statut :** {s.get('statut', 'Planifié')}")
                             st.markdown("---")
                             
-                            # Correction définitive de l'intitulé du bouton ici
                             if st.button("Modifier ce chantier", key=f"btn-modif-final-{s['id']}-{i}-{idx}", use_container_width=True):
                                 st.session_state["id_chantier_edition"] = s["id"]
                                 st.rerun()
