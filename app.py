@@ -90,7 +90,7 @@ COULEURS_STATUTS = {
     "Urgent": {"accent": "#F87171", "bg_dot": "#DC2626"}
 }
 
-# --- GESTION DE LA SESSION DE MANIÈRE SÉCURISÉE ---
+# --- GESTION DE LA SESSION ---
 saved_user = None
 try:
     saved_user = cookie_manager.get(cookie="user_session")
@@ -107,7 +107,7 @@ if "user_connecte" not in st.session_state:
     else:
         st.session_state["user_connecte"] = None
 
-# SÉCURITÉ : Écran de connexion
+# Écran de connexion
 if st.session_state["user_connecte"] is None:
     st.subheader("Connexion")
     email_saisi = st.text_input("Adresse Email")
@@ -124,7 +124,7 @@ if st.session_state["user_connecte"] is None:
                 st.error("Identifiants incorrects.")
                 
     with col_aide:
-        st.markdown("<p style='font-size: 13px; color: #64748B; margin-top: 8px;'>Mot de passe oublié ? Contactez votre administrateur pour récupérer vos accès.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size: 13px; color: #64748B; margin-top: 8px;'>Mot de passe oublié ? Contactez votre administrateur.</p>", unsafe_allow_html=True)
         
     st.stop()
 
@@ -139,7 +139,7 @@ for i in range(7):
     j = lundi_semaine + timedelta(days=i)
     jours.append({"nom": noms_jours[i], "date_texte": j.strftime('%d/%m'), "date_str": str(j)})
 
-# --- GÉNÉRATION DU PDF TABLEAU LINÉAIRE ---
+# --- GÉNÉRATION DU PDF ---
 def generer_pdf_global(liste_missions):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=15, leftMargin=15, topMargin=20, bottomMargin=20)
@@ -199,13 +199,13 @@ def generer_pdf_global(liste_missions):
     buffer.seek(0)
     return buffer
 
-# --- RECUPERATION DU FILTRE ACTUEL ---
+# --- FILTRES ---
 employe_filtre = st.session_state.get("emp_filtre_key", "Tous les employés")
 user = st.session_state["user_connecte"]
 if user["role"] != "admin":
     employe_filtre = user["email"]
 
-# --- COLLECTE DES MISSIONS FILTRÉES ---
+# --- COLLECTE DES MISSIONS ---
 missions_semaine = []
 for s in st.session_state["plannings"]:
     str_deb = s.get("date_debut", s.get("date"))
@@ -220,7 +220,7 @@ for s in st.session_state["plannings"]:
             continue
         missions_semaine.append(s)
 
-# --- BARRE LATÉRALE DE GESTION ---
+# --- BARRE LATÉRALE ---
 st.sidebar.markdown(f"### Utilisateur : {user['nom']}")
 st.sidebar.markdown(f"**Rôle système :** {user['role'].upper()}")
 st.sidebar.markdown("---")
@@ -246,15 +246,13 @@ if st.sidebar.button("Déconnexion", use_container_width=True):
         pass
     st.rerun()
 
-# --- CSS PRESTANCE ---
+# --- CSS STYLES ---
 st.markdown("""
     <style>
     .header-jour { text-align: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #334155; }
     .nom-jour { margin: 0; font-size: 11px; opacity: 0.6; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
     .num-jour { margin: 4px 0 0 0; font-size: 22px; font-weight: 800; }
-    
     .zone-shifts-jour { display: flex; flex-direction: column; gap: 12px; }
-    
     .shift-card-container { 
         border-radius: 8px; 
         background: #1E293B; 
@@ -263,24 +261,15 @@ st.markdown("""
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         margin-bottom: 2px;
     }
-    
     .shift-top-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
     .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
     .shift-lieu { margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #94A3B8; }
     .shift-team { margin: 0 0 6px 0; font-size: 11px; color: #38BDF8; font-style: italic; }
-    
-    .shift-task { 
-        margin: 0; 
-        font-size: 12px; 
-        color: #E2E8F0; 
-        white-space: pre-wrap; 
-        word-break: break-word;
-        line-height: 1.4;
-    }
+    .shift-task { margin: 0; font-size: 12px; color: #E2E8F0; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- SYSTÈME D'ONGLETS ---
+# --- ONGLETS ---
 if user["role"] == "admin":
     onglet_actif = st.tabs(["Calendrier", "Planifier", "Liste des Comptes"])
 else:
@@ -291,7 +280,6 @@ else:
 # ==========================================
 with onglet_actif[0]:
     st.markdown("<h2 style='margin: 0 0 15px 0;'>Calendrier</h2>", unsafe_allow_html=True)
-
     col_date, col_filtre = st.columns(2)
 
     with col_date:
@@ -300,7 +288,7 @@ with onglet_actif[0]:
     with col_filtre:
         liste_employes_choix = ["Tous les employés"] + list(st.session_state["utilisateurs"].keys())
         def formater_nom_filtre(x):
-            if x == "Tous les employés": return "Tous les employés"
+            if x == "Tous les employés": return "🌍 Tous les employés"
             return st.session_state["utilisateurs"][x]["nom"]
             
         if user["role"] == "admin":
@@ -308,7 +296,7 @@ with onglet_actif[0]:
         else:
             st.session_state["emp_filtre_key"] = user["email"]
 
-    # --- MODE ÉDITION NETTOYÉ ---
+    # --- SÉCURITÉ FORMULAIRE D'ÉDITION RE-VÉRIFIÉE ---
     if st.session_state["id_chantier_edition"] is not None:
         chantier_a_editer = next((c for c in st.session_state["plannings"] if c["id"] == st.session_state["id_chantier_edition"]), None)
         if chantier_a_editer:
@@ -344,8 +332,6 @@ with onglet_actif[0]:
                         st.rerun()
 
     st.markdown("<br/>", unsafe_allow_html=True)
-
-    # --- AFFICHAGE DU GRILLE-CALENDRIER ---
     cols = st.columns(7)
 
     for i, jour in enumerate(jours):
@@ -374,7 +360,6 @@ with onglet_actif[0]:
                     noms_equipe = ", ".join([st.session_state["utilisateurs"][emp]["nom"] for emp in s.get("participants", []) if emp in st.session_state["utilisateurs"]])
                     
                     if user["role"] == "admin":
-                        # Utilisation de chaînes épurées sans aucun mot interdit pour le popover et les clés
                         with st.popover(s['lieu'], use_container_width=True):
                             st.markdown(f"**Chantier :** {s['lieu']}")
                             st.markdown(f"**Équipe :** {noms_equipe}")
@@ -382,12 +367,12 @@ with onglet_actif[0]:
                             st.markdown(f"**Statut :** {s.get('statut', 'Planifié')}")
                             st.markdown("---")
                             
-                            # Clés strictes pour court-circuiter le cache Streamlit
-                            if st.button("Modifier", key=f"action-modifier-{s['id']}-{i}-{idx}", use_container_width=True):
+                            # Correction définitive de l'intitulé du bouton ici
+                            if st.button("Modifier ce chantier", key=f"btn-modif-final-{s['id']}-{i}-{idx}", use_container_width=True):
                                 st.session_state["id_chantier_edition"] = s["id"]
                                 st.rerun()
                                 
-                            if st.button("Supprimer", key=f"action-supprimer-{s['id']}-{i}-{idx}", type="primary", use_container_width=True):
+                            if st.button("Supprimer ce chantier", key=f"btn-suppr-final-{s['id']}-{i}-{idx}", type="primary", use_container_width=True):
                                 st.session_state["plannings"].remove(s)
                                 sauvegarder_donnees()
                                 st.rerun()
@@ -404,7 +389,6 @@ with onglet_actif[0]:
                         """, unsafe_allow_html=True)
             else:
                 st.markdown("<p style='text-align: center; opacity: 0.2; font-size: 12px; margin-top: 10px;'>Aucun chantier</p>", unsafe_allow_html=True)
-                
             st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
@@ -413,7 +397,6 @@ with onglet_actif[0]:
 if user["role"] == "admin":
     with onglet_actif[1]:
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Planifier une Mission</h2>", unsafe_allow_html=True)
-        
         with st.form("form_centre_shift", clear_on_submit=True):
             col_1, col_2 = st.columns(2)
             with col_1:
@@ -458,7 +441,6 @@ if user["role"] == "admin":
 if user["role"] == "admin":
     with onglet_actif[2]:
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Créer un nouveau compte employé</h2>", unsafe_allow_html=True)
-        
         with st.form("form_centre_compte", clear_on_submit=True):
             col_c1, col_c2 = st.columns(2)
             with col_c1:
@@ -475,11 +457,10 @@ if user["role"] == "admin":
                     st.toast(f"Le compte de {nouveau_nom} a été créé !")
                     st.rerun()
                 else:
-                    st.error("Veuillez remplir tous les champs du formulaire.")
+                    st.error("Veuillez remplir tous les champs.")
 
         st.markdown("---")
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Liste des accès et Mots de Passe</h2>", unsafe_allow_html=True)
-        
         donnees_comptes = []
         for mail, data in st.session_state["utilisateurs"].items():
             donnees_comptes.append({
@@ -488,5 +469,4 @@ if user["role"] == "admin":
                 "Mot de Passe": data["mdp"],
                 "Rôle": data["role"].upper()
             })
-        
         st.dataframe(donnees_comptes, use_container_width=True, hide_index=True)
