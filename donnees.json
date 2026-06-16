@@ -1,0 +1,22 @@
+{
+    "utilisateurs": {
+        "admin@entreprise.com": {
+            "nom": "Admin",
+            "role": "admin",
+            "mdp": "admin123"
+        }
+    },
+    "plannings": [
+        {
+            "id": 1,
+            "participants": [
+                "admin@entreprise.com"
+            ],
+            "date_debut": "2026-06-16",
+            "date_fin": "2026-06-17",
+            "lieu": "TEST",
+            "tache": "test de l'application faite",
+            "statut": "Production"
+        }
+    ]
+}
