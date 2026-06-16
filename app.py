@@ -288,7 +288,7 @@ with onglet_actif[0]:
     with col_filtre:
         liste_employes_choix = ["Tous les employés"] + list(st.session_state["utilisateurs"].keys())
         def formater_nom_filtre(x):
-            if x == "Tous les employés": return "🌍 Tous les employés"
+            if x == "Tous les employés": return "Tous les employés"
             return st.session_state["utilisateurs"][x]["nom"]
             
         if user["role"] == "admin":
