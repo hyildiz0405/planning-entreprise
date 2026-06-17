@@ -219,7 +219,6 @@ st.sidebar.markdown(f"### Utilisateur : {user['nom']}")
 st.sidebar.markdown(f"**Rôle système :** {user['role'].upper()}")
 st.sidebar.markdown("---")
 
-# Remise en place du bouton PDF qui avait disparu
 try:
     pdf_data = generer_pdf_global(missions_semaine)
     st.sidebar.download_button(
@@ -334,23 +333,34 @@ if user["role"] != "admin":
     with onglet_actif[1]:
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Soumettre un Rapport de Chantier</h2>", unsafe_allow_html=True)
         with st.form("form_rapport_employe", clear_on_submit=True):
-            chantiers_dispos = list(set([s["lieu"] for s in st.session_state["plannings"]]))
-            lieu_rapport = st.selectbox("Chantier concerné", options=chantiers_dispos)
+            # 1. Filtre intelligent : on liste uniquement les chantiers affectés à cet employé
+            chantiers_employe = list(set([s["lieu"] for s in st.session_state["plannings"] if user["email"] in s.get("participants", [])]))
+            options_selection = chantiers_employe + ["Autre chantier..."]
+            
+            lieu_selectionne = st.selectbox("Chantier concerné (Cliquez et tapez les 1ères lettres)", options=options_selection)
+            
+            # Si "Autre chantier..." est choisi, on affiche une case de texte libre en dessous
+            lieu_final = lieu_selectionne
+            if lieu_selectionne == "Autre chantier...":
+                lieu_final = st.text_input("Saisissez le nom du chantier manuellement :").upper()
+                
             date_rapport = st.date_input("Date du jour", datetime.now().date(), format="DD/MM/YYYY")
             contenu_rapport = st.text_area("Compte-rendu (travaux réalisés, problèmes rencontrés, matériel manquant...)", height=200)
             
             if st.form_submit_button("Envoyer le rapport", use_container_width=True):
-                if contenu_rapport.strip():
+                if not lieu_final or lieu_final.strip() == "":
+                    st.error("Veuillez indiquer le nom du chantier.")
+                elif contenu_rapport.strip():
                     st.session_state["rapports"].append({
                         "id": int(time.time()),
                         "auteur": user["nom"],
                         "email_auteur": user["email"],
-                        "chantier": lieu_rapport,
+                        "chantier": lieu_final.strip().upper(),
                         "date": str(date_rapport),
                         "texte": contenu_rapport.strip()
                     })
                     sauvegarder_donnees()
-                    st.toast("Rapport envoyé à l'administration avec succès !")
+                    st.toast("🚀 Rapport envoyé à l'administration avec succès !")
                     st.rerun()
                 else:
                     st.error("Le descriptif du rapport ne peut pas être vide.")
@@ -394,7 +404,7 @@ if user["role"] == "admin":
                 date_f = datetime.strptime(rap["date"], "%Y-%m-%d").strftime("%d/%m/%Y")
                 st.markdown(f"""
                 <div class="rapport-card">
-                    <p style="margin:0; font-size:12px; color:#A855F7; font-weight:bold;">CHANTIER : {rap['chantier']}</p>
+                    <p style="margin:0; font-size:12px; color:#A855F7; font-weight:bold;">📍 CHANTIER : {rap['chantier']}</p>
                     <p style="margin:3px 0; font-size:14px; color:#E2E8F0;"><b>Par :</b> {rap['auteur']} ({rap['email_auteur']}) — <b>Le :</b> {date_f}</p>
                     <hr style="border:0; border-top:1px solid #334155; margin:8px 0;"/>
                     <p style="margin:0; font-size:13px; color:#94A3B8; white-space:pre-wrap;">{rap['texte']}</p>
