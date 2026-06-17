@@ -134,6 +134,66 @@ for i in range(7):
     j = lundi_semaine + timedelta(days=i)
     jours.append({"nom": noms_jours[i], "date_texte": j.strftime('%d/%m'), "date_str": str(j)})
 
+# --- GÉNÉRATION DU PDF ---
+def generer_pdf_global(liste_missions):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=15, leftMargin=15, topMargin=20, bottomMargin=20)
+    story = []
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, leading=20, textColor=colors.HexColor("#0F172A"), alignment=0)
+    header_style = ParagraphStyle('HeaderTable', fontName="Helvetica-Bold", fontSize=9, leading=11, textColor=colors.white, alignment=1)
+    cell_style = ParagraphStyle('CellTable', fontName="Helvetica", fontSize=8, leading=11, textColor=colors.HexColor("#1E293B"))
+    cell_bold = ParagraphStyle('CellBold', fontName="Helvetica-Bold", fontSize=8, leading=11, textColor=colors.HexColor("#0F172A"))
+    
+    titre = f"RAPPORT DE PLANNING GENERAL — SEMAINE DU {lundi_semaine.strftime('%d/%m/%Y')} AU {dimanche_semaine.strftime('%d/%m/%Y')}"
+    story.append(Paragraph(titre, title_style))
+    story.append(Spacer(1, 15))
+    
+    headers = [
+        Paragraph("<b>Lieu</b>", header_style),
+        Paragraph("<b>Objet / Mission</b>", header_style),
+        Paragraph("<b>Début</b>", header_style),
+        Paragraph("<b>Fin</b>", header_style),
+        Paragraph("<b>Participants</b>", header_style),
+        Paragraph("<b>Statut</b>", header_style)
+    ]
+    
+    table_data = [headers]
+    
+    for s in liste_missions:
+        noms_equipe = ", ".join([st.session_state["utilisateurs"][emp]["nom"] for emp in s.get("participants", []) if emp in st.session_state["utilisateurs"]])
+        tache_propre = s['tache'].replace('\n', '<br/>')
+        
+        str_deb = s.get("date_debut", s.get("date", ""))
+        str_fin = s.get("date_fin", s.get("date", ""))
+        
+        d_deb = datetime.strptime(str_deb, "%Y-%m-%d").strftime("%d/%m/%Y") if str_deb else "—"
+        d_fin = datetime.strptime(str_fin, "%Y-%m-%d").strftime("%d/%m/%Y") if str_fin else "—"
+        
+        table_data.append([
+            Paragraph(s['lieu'], cell_bold),
+            Paragraph(tache_propre, cell_style),
+            Paragraph(d_deb, cell_style),
+            Paragraph(d_fin, cell_style),
+            Paragraph(noms_equipe, cell_style),
+            Paragraph(s.get('statut', 'Planifié'), cell_bold)
+        ])
+        
+    t = Table(table_data, colWidths=[110, 292, 80, 80, 140, 80])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0F172A")),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+    ]))
+    story.append(t)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
 # --- FILTRES ---
 employe_filtre = st.session_state.get("emp_filtre_key", "Tous les employés")
 user = st.session_state["user_connecte"]
@@ -159,6 +219,20 @@ st.sidebar.markdown(f"### Utilisateur : {user['nom']}")
 st.sidebar.markdown(f"**Rôle système :** {user['role'].upper()}")
 st.sidebar.markdown("---")
 
+# Remise en place du bouton PDF qui avait disparu
+try:
+    pdf_data = generer_pdf_global(missions_semaine)
+    st.sidebar.download_button(
+        label="📄 Télécharger le rapport PDF",
+        data=pdf_data,
+        file_name=f"planning_{lundi_semaine.strftime('%d_%m_%Y')}.pdf",
+        mime="application/pdf",
+        use_container_width=True
+    )
+except Exception:
+    st.sidebar.error("Erreur lors de la préparation du PDF.")
+
+st.sidebar.markdown("<br/>", unsafe_allow_html=True)
 if st.sidebar.button("Déconnexion", use_container_width=True):
     st.session_state["user_connecte"] = None
     try: cookie_manager.delete("user_session")
@@ -206,7 +280,6 @@ with onglet_actif[0]:
         else:
             st.session_state["emp_filtre_key"] = user["email"]
 
-    # (La section d'édition reste intacte...)
     if st.session_state["id_chantier_edition"] is not None:
         chantier_a_editer = next((c for c in st.session_state["plannings"] if c["id"] == st.session_state["id_chantier_edition"]), None)
         if chantier_a_editer:
@@ -261,7 +334,6 @@ if user["role"] != "admin":
     with onglet_actif[1]:
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Soumettre un Rapport de Chantier</h2>", unsafe_allow_html=True)
         with st.form("form_rapport_employe", clear_on_submit=True):
-            # Liste des chantiers pour aider l'employé à choisir
             chantiers_dispos = list(set([s["lieu"] for s in st.session_state["plannings"]]))
             lieu_rapport = st.selectbox("Chantier concerné", options=chantiers_dispos)
             date_rapport = st.date_input("Date du jour", datetime.now().date(), format="DD/MM/YYYY")
@@ -317,13 +389,9 @@ if user["role"] == "admin":
         if not st.session_state["rapports"]:
             st.info("Aucun rapport n'a été déposé par les employés pour le moment.")
         else:
-            # Tri des rapports du plus récent au plus ancien
             pour_affichage = sorted(st.session_state["rapports"], key=lambda x: x.get("id", 0), reverse=True)
-            
             for rap in pour_affichage:
                 date_f = datetime.strptime(rap["date"], "%Y-%m-%d").strftime("%d/%m/%Y")
-                
-                # Bloc d'affichage design pour chaque rapport
                 st.markdown(f"""
                 <div class="rapport-card">
                     <p style="margin:0; font-size:12px; color:#A855F7; font-weight:bold;">📍 CHANTIER : {rap['chantier']}</p>
@@ -333,7 +401,6 @@ if user["role"] == "admin":
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Bouton de suppression individuelle si besoin de nettoyer
                 if st.button("Supprimer ce rapport", key=f"del-rap-{rap['id']}", type="secondary"):
                     st.session_state["rapports"] = [r for r in st.session_state["rapports"] if r["id"] != rap["id"]]
                     sauvegarder_donnees()
