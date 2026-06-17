@@ -227,7 +227,7 @@ st.sidebar.markdown("---")
 try:
     pdf_data = generer_pdf_global(missions_semaine)
     st.sidebar.download_button(
-        label="📄 Télécharger le rapport PDF",
+        label="Télécharger le rapport PDF",
         data=pdf_data,
         file_name=f"planning_{lundi_semaine.strftime('%d_%m_%Y')}.pdf",
         mime="application/pdf",
@@ -339,53 +339,34 @@ if user["role"] != "admin":
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Soumettre un Rapport de Chantier</h2>", unsafe_allow_html=True)
         with st.form("form_rapport_employe", clear_on_submit=True):
             
-            # 1. On récupère la liste dynamique de ses chantiers réels (Parenthèse corrigée ici !)
-            chantiers_employe = list(set([s["lieu"] for s in st.session_state["plannings"] if user["email"] in s.get("participants", [])]))
+            # 1. Solution simplifiée : On extrait TOUS les chantiers uniques saisis globalement dans l'application
+            tous_les_chantiers = list(set([s["lieu"] for s in st.session_state["plannings"] if "lieu" in s]))
             
-            # Sécurité si la liste de l'employé est vide
-            if not chantiers_employe:
-                chantiers_employe = ["AUCUN CHANTIER ASSIGNÉ"]
+            # Tri alphabétique pour que ce soit plus propre à lire
+            tous_les_chantiers.sort()
             
-            # 2. Case à cocher pour basculer en mode manuel
-            autre_chantier = st.checkbox("Modifier le chantier (cocher pour saisir un autre nom à la main)")
+            # Sécurité si aucun chantier n'existe dans toute la base
+            if not tous_les_chantiers:
+                tous_les_chantiers = ["Aucun chantier existant sur le planning"]
             
-            # 3. Liste déroulante : Grisée si on veut taper à la main
+            # 2. Unique liste déroulante contenant tous les chantiers globaux
             choix_chantier = st.selectbox(
-                "Sélectionnez un chantier de votre planning", 
-                options=chantiers_employe,
-                disabled=autre_chantier
+                "Sélectionnez le chantier concerné", 
+                options=tous_les_chantiers
             )
             
-            # 4. Champ de texte : Grisé tant qu'on n'a pas coché la case "autre_chantier"
-            lieu_manuel = st.text_input(
-                "Saisir le nom du chantier manuellement",
-                disabled=not autre_chantier,
-                placeholder="Ex: CHANTIER PARIS (Cochez la case ci-dessus pour écrire ici)"
-            )
-            
-            # Détermination automatique du lieu final
-            if autre_chantier:
-                lieu_final = lieu_manuel.strip().upper()
-            else:
-                if choix_chantier == "AUCUN CHANTIER ASSIGNÉ":
-                    lieu_final = ""
-                else:
-                    lieu_final = choix_chantier
-                
             date_rapport = st.date_input("Date du jour", datetime.now().date(), format="DD/MM/YYYY")
             contenu_rapport = st.text_area("Compte-rendu (travaux réalisés, problèmes rencontrés, matériel manquant...)", height=200)
             
             if st.form_submit_button("Envoyer le rapport", use_container_width=True):
-                if autre_chantier and not lieu_manuel.strip():
-                    st.error("Vous avez coché 'Autre chantier', veuillez écrire son nom dans la case.")
-                elif not lieu_final:
-                    st.error("Veuillez indiquer un nom de chantier valide (via la case manuelle si votre liste est vide).")
+                if choix_chantier == "Aucun chantier existant sur le planning":
+                    st.error("Impossible d'envoyer un rapport car aucun chantier n'existe dans l'application.")
                 elif contenu_rapport.strip():
                     st.session_state["rapports"].append({
                         "id": int(time.time()),
                         "auteur": user["nom"],
                         "email_auteur": user["email"],
-                        "chantier": lieu_final,
+                        "chantier": choix_chantier,
                         "date": str(date_rapport),
                         "texte": contenu_rapport.strip()
                     })
