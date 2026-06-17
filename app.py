@@ -18,19 +18,24 @@ def charger_donnees():
     donnees_par_defaut = {
         "utilisateurs": {
             "admin@entreprise.com": {"nom": "Admin", "role": "admin", "mdp": "admin123"},
+            "sb@arhen.energy": {"nom": "Samir BOUABDELLAH", "role": "admin", "mdp": "hml73200!"},
+            "hasan.gozel@arhen.energy": {"nom": "Hasan GOZEL", "role": "admin", "mdp": "hml73200!"},
+            "mc@arhen.energy": {"nom": "Marcia DE CASTRO", "role": "admin", "mdp": "hml73200!"},
+            "loic.arribert@arhen.energy": {"nom": "Loïc ARRIBERT", "role": "admin", "mdp": "hml73200!"},
+            "hy@arhen.energy": {"nom": "Test", "role": "admin", "mdp": "hml73200!"}
         },
         "plannings": [
             {
                 "id": 1,
-                "participants": ["romuald@entreprise.com", "hasan@entreprise.com", "loic@entreprise.com"],
-                "date_debut": "2026-06-15", 
-                "date_fin": "2026-06-19",
-                "lieu": "CAP FERRET",
-                "tache": "Chantier – Villa Cap Ferret\nSuivi de la production de la structure principale et raccordements.",
+                "participants": ["admin@entreprise.com"],
+                "date_debut": "2026-06-16", 
+                "date_fin": "2026-06-17",
+                "lieu": "TEST",
+                "tache": "test de l'application faite",
                 "statut": "Production"
             }
         ],
-        "rapports": []  # Initialisation de la liste des rapports
+        "rapports": []
     }
     
     if os.path.exists(FICHIER_DONNEES):
@@ -333,29 +338,28 @@ if user["role"] != "admin":
     with onglet_actif[1]:
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Soumettre un Rapport de Chantier</h2>", unsafe_allow_html=True)
         with st.form("form_rapport_employe", clear_on_submit=True):
-            # 1. Filtre intelligent : on liste uniquement les chantiers affectés à cet employé
+            
+            # 1. On filtre automatiquement pour suggérer uniquement ses chantiers
             chantiers_employe = list(set([s["lieu"] for s in st.session_state["plannings"] if user["email"] in s.get("participants", [])]))
-            options_selection = chantiers_employe + ["Autre chantier..."]
             
-            lieu_selectionne = st.selectbox("Chantier concerné (Cliquez et tapez les 1ères lettres)", options=options_selection)
-            
-            # Si "Autre chantier..." est choisi, on affiche une case de texte libre en dessous
-            lieu_final = lieu_selectionne
-            if lieu_selectionne == "Autre chantier...":
-                lieu_final = st.text_input("Saisissez le nom du chantier manuellement :").upper()
+            # 2. BARRE UNIQUE CHERCHER/TAPER (Format Combobox élégant)
+            lieu_final = st.text_input(
+                "Chantier concerné (Tapez les premières lettres pour filtrer ou écrivez-le entièrement)", 
+                autocomplete=chantiers_employe
+            ).strip().upper()
                 
             date_rapport = st.date_input("Date du jour", datetime.now().date(), format="DD/MM/YYYY")
             contenu_rapport = st.text_area("Compte-rendu (travaux réalisés, problèmes rencontrés, matériel manquant...)", height=200)
             
             if st.form_submit_button("Envoyer le rapport", use_container_width=True):
-                if not lieu_final or lieu_final.strip() == "":
+                if not lieu_final:
                     st.error("Veuillez indiquer le nom du chantier.")
                 elif contenu_rapport.strip():
                     st.session_state["rapports"].append({
                         "id": int(time.time()),
                         "auteur": user["nom"],
                         "email_auteur": user["email"],
-                        "chantier": lieu_final.strip().upper(),
+                        "chantier": lieu_final,
                         "date": str(date_rapport),
                         "texte": contenu_rapport.strip()
                     })
