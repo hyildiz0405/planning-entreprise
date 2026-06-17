@@ -436,7 +436,7 @@ if user["role"] == "admin":
                     st.error("Veuillez remplir au moins les participants, le lieu et le descriptif.")
 
 # ==========================================
-# ONGLET 3 : LISTE DES COMPTES (AVEC CHOIX DU RÔLE)
+# ONGLET 3 : LISTE DES COMPTES (GESTION COMPLETE)
 # ==========================================
 if user["role"] == "admin":
     with onglet_actif[2]:
@@ -448,7 +448,6 @@ if user["role"] == "admin":
                 nouveau_nom = st.text_input("Nom")
             with col_c2:
                 nouveau_mdp = st.text_input("Mot de passe", type="password")
-                # AJOUT ICI : Sélection du rôle directement à la création du compte
                 nouveau_role = st.selectbox("Rôle du compte", options=["Employé", "Admin"])
             
             st.markdown("<br/>", unsafe_allow_html=True)
@@ -468,13 +467,31 @@ if user["role"] == "admin":
                     st.error("Veuillez remplir tous les champs.")
 
         st.markdown("---")
-        st.markdown("<h2 style='margin: 0 0 15px 0;'>Liste des accès et Mots de Passe</h2>", unsafe_allow_html=True)
-        donnees_comptes = []
-        for mail, data in st.session_state["utilisateurs"].items():
-            donnees_comptes.append({
-                "Nom complet": data["nom"],
-                "Adresse Email": mail,
-                "Mot de Passe": data["mdp"],
-                "Rôle": data["role"].upper()
-            })
-        st.dataframe(donnees_comptes, use_container_width=True, hide_index=True)
+        st.markdown("<h2 style='margin: 0 0 15px 0;'>Gestion des accès et Mots de Passe</h2>", unsafe_allow_html=True)
+        
+        # --- INTERFACE DE MODIFICATION / SUPPRESSION INDIVIDUELLE ---
+        for mail, data in list(st.session_state["utilisateurs"].items()):
+            with st.expander(f"👤 {data['nom']} ({mail}) — Rôle : {data['role'].upper()}"):
+                col_g1, col_g2 = st.columns(2)
+                
+                with col_g1:
+                    # Permet de changer le mot de passe directement
+                    nouveau_mdp_saisi = st.text_input(f"Modifier le mot de passe pour {data['nom']}", value=data["mdp"], key=f"mdp-{mail}", type="password")
+                    if nouveau_mdp_saisi != data["mdp"]:
+                        if st.button(f"Enregistrer le nouveau MDP", key=f"btn-mdp-{mail}"):
+                            st.session_state["utilisateurs"][mail]["mdp"] = nouveau_mdp_saisi
+                            sauvegarder_donnees()
+                            st.toast("Mot de passe modifié avec succès !")
+                            st.rerun()
+                            
+                with col_g2:
+                    st.markdown("<p style='font-size: 14px; margin-bottom: 25px;'>Zone dangereuse :</p>", unsafe_allow_html=True)
+                    # Sécurité pour éviter de supprimer le compte admin principal avec lequel on est connecté
+                    if mail == user["email"]:
+                        st.warning("Vous ne pouvez pas supprimer le compte avec lequel vous êtes connecté.")
+                    else:
+                        if st.button(f"❌ Supprimer définitivement ce compte", key=f"btn-suppr-{mail}", type="primary"):
+                            del st.session_state["utilisateurs"][mail]
+                            sauvegarder_donnees()
+                            st.toast("Compte supprimé avec succès !")
+                            st.rerun()
