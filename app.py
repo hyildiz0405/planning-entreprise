@@ -6,7 +6,6 @@ from io import BytesIO
 import json
 import os
 import time
-import pandas as pd
 
 # --- CONFIGURATION INITIALE DE L'APPLICATION ---
 st.set_page_config(page_title="Planning Entreprise", page_icon="logo.png", layout="wide")
@@ -87,10 +86,10 @@ COULEURS_STATUTS = {
     "Urgent": {"accent": "#F87171", "bg_dot": "#DC2626"}
 }
 
-# --- GESTION DE LA SESSION (CORRECTION ANTI-DÉCONNEXION) ---
+# --- GESTION DE LA SESSION (ANTI-DÉCONNEXION) ---
 saved_user = None
 try:
-    time.sleep(0.2)  # Laisse un instant au navigateur pour charger le cookie avant de bloquer
+    time.sleep(0.2)  # Sécurité pour laisser charger le cookie
     saved_user = cookie_manager.get(cookie="user_session")
 except Exception:
     saved_user = None
@@ -472,31 +471,14 @@ if user["role"] == "admin":
         st.markdown("---")
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Gestion des accès et Mots de Passe</h2>", unsafe_allow_html=True)
         
-        # --- INTERFACE DE MODIFICATION / SUPPRESSION INDIVIDUELLE ---
+        # --- INTERFACE DE MODIFICATION DES MOTS DE PASSE UNIQUEMENT ---
         for mail, data in list(st.session_state["utilisateurs"].items()):
-            with st.expander(f"{data['nom']} ({mail}) — Rôle : {data['role'].upper()}"):
-                col_g1, col_g2 = st.columns(2)
-                
-                with col_g1:
-                    # Permet de changer le mot de passe directement
-                    nouveau_mdp_saisi = st.text_input(f"Modifier le mot de passe pour {data['nom']}", value=data["mdp"], key=f"mdp-{mail}", type="password")
-                    if nouveau_mdp_saisi != data["mdp"]:
-                        if st.button(f"Enregistrer le nouveau MDP", key=f"btn-mdp-{mail}"):
-                            st.session_state["utilisateurs"][mail]["mdp"] = nouveau_mdp_saisi
-                            sauvegarder_donnees()
-                            st.toast("Mot de passe modifié avec succès !")
-                            st.rerun()
-                            
-                with col_g2:
-                    st.markdown("<p style='font-size: 14px; margin-bottom: 25px;'>Zone dangereuse :</p>", unsafe_allow_html=True)
-                    # Sécurité pour éviter de supprimer le compte admin principal avec lequel on est connecté
-                    if mail == user["email"]:
-                        st.warning("Vous ne pouvez pas supprimer le compte avec lequel vous êtes connecté.")
-                    else:
-                        if st.button(f"Supprimer définitivement ce compte", key=f"btn-suppr-{mail}", type="primary"):
-                            del st.session_state["utilisateurs"][mail]
-                            sauvegarder_donnees()
-                            st.toast("Compte supprimé avec succès !")
-                            st.rerun()
-
-       
+            with st.expander(f"👤 {data['nom']} ({mail}) — Rôle : {data['role'].upper()}"):
+                # Permet de changer le mot de passe directement
+                nouveau_mdp_saisi = st.text_input(f"Modifier le mot de passe pour {data['nom']}", value=data["mdp"], key=f"mdp-{mail}", type="password")
+                if nouveau_mdp_saisi != data["mdp"]:
+                    if st.button(f"Enregistrer le nouveau MDP", key=f"btn-mdp-{mail}"):
+                        st.session_state["utilisateurs"][mail]["mdp"] = nouveau_mdp_saisi
+                        sauvegarder_donnees()
+                        st.toast("Mot de passe modifié avec succès !")
+                        st.rerun()
