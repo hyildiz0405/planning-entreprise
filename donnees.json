@@ -4,6 +4,21 @@
             "nom": "Admin",
             "role": "admin",
             "mdp": "admin123"
+        },
+        "sb@arhen.energy": {
+            "nom": "Samir Bouabdellah",
+            "role": "employe",
+            "mdp": "hml73200!"
+        },
+        "hasan.gozel@arhen.energy": {
+            "nom": "Hasan GOZEL",
+            "role": "employe",
+            "mdp": "hml73200!"
+        },
+        "loic.arribert@arhen.energy": {
+            "nom": "Loïc ARRIBERT",
+            "role": "employe",
+            "mdp": "hml73200!"
         }
     },
     "plannings": [
