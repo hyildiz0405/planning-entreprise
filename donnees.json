@@ -4,7 +4,7 @@
             "nom": "Admin",
             "role": "admin",
             "mdp": "admin123"
-            
+        },    
         "employe@entreprise.com": {
             "nom": "Employé",
             "role": "employe",
