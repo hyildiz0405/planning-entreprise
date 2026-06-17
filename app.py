@@ -5,12 +5,8 @@ import extra_streamlit_components as stx
 from io import BytesIO
 import json
 import os
-
-# Importations ReportLab
-from reportlab.lib.pagesizes import letter, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
+import time
+import pandas as pd
 
 # --- CONFIGURATION INITIALE DE L'APPLICATION ---
 st.set_page_config(page_title="Planning Entreprise", page_icon="logo.png", layout="wide")
@@ -91,9 +87,10 @@ COULEURS_STATUTS = {
     "Urgent": {"accent": "#F87171", "bg_dot": "#DC2626"}
 }
 
-# --- GESTION DE LA SESSION ---
+# --- GESTION DE LA SESSION (CORRECTION ANTI-DÉCONNEXION) ---
 saved_user = None
 try:
+    time.sleep(0.2)  # Laisse un instant au navigateur pour charger le cookie avant de bloquer
     saved_user = cookie_manager.get(cookie="user_session")
 except Exception:
     saved_user = None
@@ -133,6 +130,12 @@ if st.session_state["user_connecte"] is None:
 date_active = st.session_state["date_calendrier"]
 lundi_semaine = date_active - timedelta(days=date_active.weekday())
 dimanche_semaine = lundi_semaine + timedelta(days=6)
+
+# Importations ReportLab
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 
 noms_jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
 jours = []
@@ -495,3 +498,30 @@ if user["role"] == "admin":
                             sauvegarder_donnees()
                             st.toast("Compte supprimé avec succès !")
                             st.rerun()
+
+        # ==========================================
+        # ZONE DE SAUVEGARDE GOOGLE SHEETS
+        # ==========================================
+        st.markdown("---")
+        st.markdown("<h2 style='color: #34D399; margin: 0 0 10px 0;'>📥 Étape de Sauvegarde Rapide Google Sheets</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size: 14px; opacity: 0.8;'>Copie-colle ces tableaux mis à jour dans ton fichier Google Sheets pour fixer tes données définitivement :</p>", unsafe_allow_html=True)
+        
+        col_sheets_u, col_sheets_p = st.columns(2)
+        
+        with col_sheets_u:
+            st.markdown("**1. Tableau pour l'onglet `utilisateurs`**")
+            df_u_export = pd.DataFrame([
+                {"email": k, "nom": v["nom"], "role": v["role"], "mdp": v["mdp"]} 
+                for k, v in st.session_state["utilisateurs"].items()
+            ])
+            st.dataframe(df_u_export, hide_index=True, use_container_width=True)
+            
+        with col_sheets_p:
+            st.markdown("**2. Tableau pour l'onglet `plannings`**")
+            if st.session_state["plannings"]:
+                df_p_export = pd.DataFrame(st.session_state["plannings"])
+                if "participants" in df_p_export.columns:
+                    df_p_export["participants"] = df_p_export["participants"].apply(lambda x: ",".join(x) if isinstance(x, list) else x)
+                st.dataframe(df_p_export, hide_index=True, use_container_width=True)
+            else:
+                st.info("Aucun planning enregistré pour le moment.")
