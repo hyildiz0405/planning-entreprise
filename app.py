@@ -339,28 +339,47 @@ if user["role"] != "admin":
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Soumettre un Rapport de Chantier</h2>", unsafe_allow_html=True)
         with st.form("form_rapport_employe", clear_on_submit=True):
             
-            # 1. On récupère la liste dynamique de ses chantiers réels présents dans le planning
-            chantiers_employe = list(set([s["lieu"] for s in st.session_state["plannings"] if user["email"] in s.get("participants", [])]))
+            # 1. On récupère la liste dynamique de ses chantiers réels
+            chantiers_employe = list(set([s["lieu"] for s in st.session_state["plannings"] if user["email"] in s.get("participants", []))]))
             
-            # 2. Liste déroulante classique (uniquement ses chantiers réels)
-            choix_chantier = st.selectbox("Sélectionnez le chantier concerné", options=chantiers_employe)
+            # Sécurité si la liste de l'employé est vide
+            if not chantiers_employe:
+                chantiers_employe = ["⚠️ AUCUN CHANTIER ASSIGNÉ"]
             
-            # 3. Case à cocher et champ de texte pour taper manuellement
-            autre_chantier = st.checkbox("Autre chantier (cocher pour saisir manuellement)")
-            lieu_manuel = st.text_input("Nom du chantier (si non présent dans la liste ci-dessus)")
+            # 2. Case à cocher pour basculer en mode manuel
+            autre_chantier = st.checkbox("Modifier le chantier (cocher pour saisir un autre nom à la main)")
             
-            # Détermination du lieu final selon le choix de l'employé
+            # 3. Liste déroulante : Grisée si on veut taper à la main
+            choix_chantier = st.selectbox(
+                "Sélectionnez un chantier de votre planning", 
+                options=chantiers_employe,
+                disabled=autre_chantier
+            )
+            
+            # 4. Champ de texte : Grisé tant qu'on n'a pas coché la case "autre_chantier"
+            lieu_manuel = st.text_input(
+                "Saisir le nom du chantier manuellement",
+                disabled=not autre_chantier,
+                placeholder="Ex: CHANTIER PARIS (Cochez la case ci-dessus pour écrire ici)"
+            )
+            
+            # Détermination automatique du lieu final
             if autre_chantier:
                 lieu_final = lieu_manuel.strip().upper()
             else:
-                lieu_final = choix_chantier
+                if choix_chantier == "⚠️ AUCUN CHANTIER ASSIGNÉ":
+                    lieu_final = ""
+                else:
+                    lieu_final = choix_chantier
                 
             date_rapport = st.date_input("Date du jour", datetime.now().date(), format="DD/MM/YYYY")
-            contenu_rapport = st.text_area("Compte-rendu (travaux réalisés, problèmes rencontrés, matériel manquant...)", height=200)
+            contenu_rapport = st.text_area("Compte-rendu (travaux réalisés, problèmes rencontres, matériel manquant...)", height=200)
             
             if st.form_submit_button("Envoyer le rapport", use_container_width=True):
-                if not lieu_final:
-                    st.error("Veuillez indiquer le nom du chantier.")
+                if autre_chantier and not lieu_manuel.strip():
+                    st.error("Vous avez coché 'Autre chantier', veuillez écrire son nom dans la case.")
+                elif not lieu_final:
+                    st.error("Veuillez indiquer un nom de chantier valide (via la case manuelle si votre liste est vide).")
                 elif contenu_rapport.strip():
                     st.session_state["rapports"].append({
                         "id": int(time.time()),
