@@ -344,7 +344,7 @@ if user["role"] != "admin":
             
             # Sécurité si la liste de l'employé est vide
             if not chantiers_employe:
-                chantiers_employe = ["⚠️ AUCUN CHANTIER ASSIGNÉ"]
+                chantiers_employe = ["AUCUN CHANTIER ASSIGNÉ"]
             
             # 2. Case à cocher pour basculer en mode manuel
             autre_chantier = st.checkbox("Modifier le chantier (cocher pour saisir un autre nom à la main)")
@@ -367,7 +367,7 @@ if user["role"] != "admin":
             if autre_chantier:
                 lieu_final = lieu_manuel.strip().upper()
             else:
-                if choix_chantier == "⚠️ AUCUN CHANTIER ASSIGNÉ":
+                if choix_chantier == "AUCUN CHANTIER ASSIGNÉ":
                     lieu_final = ""
                 else:
                     lieu_final = choix_chantier
@@ -390,7 +390,7 @@ if user["role"] != "admin":
                         "texte": contenu_rapport.strip()
                     })
                     sauvegarder_donnees()
-                    st.toast("🚀 Rapport envoyé à l'administration avec succès !")
+                    st.toast("Rapport envoyé à l'administration avec succès !")
                     st.rerun()
                 else:
                     st.error("Le descriptif du rapport ne peut pas être vide.")
