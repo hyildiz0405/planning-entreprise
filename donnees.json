@@ -7,17 +7,17 @@
         },
         "sb@arhen.energy": {
             "nom": "Samir Bouabdellah",
-            "role": "employe",
+            "role": "admin",
             "mdp": "hml73200!"
         },
         "hasan.gozel@arhen.energy": {
             "nom": "Hasan GOZEL",
-            "role": "employe",
+            "role": "admin",
             "mdp": "hml73200!"
         },
         "loic.arribert@arhen.energy": {
             "nom": "Loïc ARRIBERT",
-            "role": "employe",
+            "role": "admin",
             "mdp": "hml73200!"
         }
     },
