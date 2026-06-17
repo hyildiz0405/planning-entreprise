@@ -4,12 +4,11 @@
             "nom": "Admin",
             "role": "admin",
             "mdp": "admin123"
-        },
-        "utilisateurs": {
+            
         "employe@entreprise.com": {
             "nom": "Employé",
             "role": "employe",
-            "mdp": "employe123"
+            "mdp": "123"
         },
         "sb@arhen.energy": {
             "nom": "Samir BOUABDELLAH",
