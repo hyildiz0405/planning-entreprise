@@ -350,7 +350,7 @@ if user["role"] != "admin":
                         "texte": contenu_rapport.strip()
                     })
                     sauvegarder_donnees()
-                    st.toast("🚀 Rapport envoyé à l'administration avec succès !")
+                    st.toast("Rapport envoyé à l'administration avec succès !")
                     st.rerun()
                 else:
                     st.error("Le descriptif du rapport ne peut pas être vide.")
@@ -394,7 +394,7 @@ if user["role"] == "admin":
                 date_f = datetime.strptime(rap["date"], "%Y-%m-%d").strftime("%d/%m/%Y")
                 st.markdown(f"""
                 <div class="rapport-card">
-                    <p style="margin:0; font-size:12px; color:#A855F7; font-weight:bold;">📍 CHANTIER : {rap['chantier']}</p>
+                    <p style="margin:0; font-size:12px; color:#A855F7; font-weight:bold;">CHANTIER : {rap['chantier']}</p>
                     <p style="margin:3px 0; font-size:14px; color:#E2E8F0;"><b>Par :</b> {rap['auteur']} ({rap['email_auteur']}) — <b>Le :</b> {date_f}</p>
                     <hr style="border:0; border-top:1px solid #334155; margin:8px 0;"/>
                     <p style="margin:0; font-size:13px; color:#94A3B8; white-space:pre-wrap;">{rap['texte']}</p>
@@ -429,7 +429,7 @@ if user["role"] == "admin":
 
         st.markdown("---")
         for mail, data in list(st.session_state["utilisateurs"].items()):
-            with st.expander(f"👤 {data['nom']} ({mail})"):
+            with st.expander(f"{data['nom']} ({mail})"):
                 nouveau_mdp_saisi = st.text_input("Modifier le mot de passe", value=data["mdp"], key=f"mdp-{mail}", type="password")
                 if nouveau_mdp_saisi != data["mdp"]:
                     if st.button("Enregistrer", key=f"btn-mdp-{mail}"):
