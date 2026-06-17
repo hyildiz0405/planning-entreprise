@@ -13,7 +13,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
 # --- CONFIGURATION INITIALE DE L'APPLICATION ---
-st.set_page_config(page_title="Planning Entreprise", page_icon="A", layout="wide")
+st.set_page_config(page_title="Planning Entreprise", page_icon="logo.png", layout="wide")
 
 # --- CONFIGURATION DE LA PERSISTANCE (JSON) ---
 FICHIER_DONNEES = "donnees.json"
