@@ -339,8 +339,8 @@ if user["role"] != "admin":
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Soumettre un Rapport de Chantier</h2>", unsafe_allow_html=True)
         with st.form("form_rapport_employe", clear_on_submit=True):
             
-            # 1. On récupère la liste dynamique de ses chantiers réels
-            chantiers_employe = list(set([s["lieu"] for s in st.session_state["plannings"] if user["email"] in s.get("participants", []))]))
+            # 1. On récupère la liste dynamique de ses chantiers réels (Parenthèse corrigée ici !)
+            chantiers_employe = list(set([s["lieu"] for s in st.session_state["plannings"] if user["email"] in s.get("participants", [])]))
             
             # Sécurité si la liste de l'employé est vide
             if not chantiers_employe:
@@ -373,7 +373,7 @@ if user["role"] != "admin":
                     lieu_final = choix_chantier
                 
             date_rapport = st.date_input("Date du jour", datetime.now().date(), format="DD/MM/YYYY")
-            contenu_rapport = st.text_area("Compte-rendu (travaux réalisés, problèmes rencontres, matériel manquant...)", height=200)
+            contenu_rapport = st.text_area("Compte-rendu (travaux réalisés, problèmes rencontrés, matériel manquant...)", height=200)
             
             if st.form_submit_button("Envoyer le rapport", use_container_width=True):
                 if autre_chantier and not lieu_manuel.strip():
