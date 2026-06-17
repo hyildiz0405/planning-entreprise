@@ -436,11 +436,11 @@ if user["role"] == "admin":
                     st.error("Veuillez remplir au moins les participants, le lieu et le descriptif.")
 
 # ==========================================
-# ONGLET 3 : LISTE DES COMPTES
+# ONGLET 3 : LISTE DES COMPTES (AVEC CHOIX DU RÔLE)
 # ==========================================
 if user["role"] == "admin":
     with onglet_actif[2]:
-        st.markdown("<h2 style='margin: 0 0 15px 0;'>Créer un nouveau compte employé</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='margin: 0 0 15px 0;'>Créer un nouveau compte</h2>", unsafe_allow_html=True)
         with st.form("form_centre_compte", clear_on_submit=True):
             col_c1, col_c2 = st.columns(2)
             with col_c1:
@@ -448,13 +448,21 @@ if user["role"] == "admin":
                 nouveau_nom = st.text_input("Nom")
             with col_c2:
                 nouveau_mdp = st.text_input("Mot de passe", type="password")
+                # AJOUT ICI : Sélection du rôle directement à la création du compte
+                nouveau_role = st.selectbox("Rôle du compte", options=["Employé", "Admin"])
             
             st.markdown("<br/>", unsafe_allow_html=True)
-            if st.form_submit_button("Ajouter l'employé", use_container_width=True):
+            if st.form_submit_button("Créer le compte", use_container_width=True):
                 if nouvel_email and nouveau_nom and nouveau_mdp:
-                    st.session_state["utilisateurs"][nouvel_email] = {"nom": nouveau_nom, "role": "employe", "mdp": nouveau_mdp}
+                    role_technique = "admin" if nouveau_role == "Admin" else "employe"
+                    
+                    st.session_state["utilisateurs"][nouvel_email] = {
+                        "nom": nouveau_nom, 
+                        "role": role_technique, 
+                        "mdp": nouveau_mdp
+                    }
                     sauvegarder_donnees()
-                    st.toast(f"Le compte de {nouveau_nom} a été créé !")
+                    st.toast(f"Le compte de {nouveau_nom} ({nouveau_role}) a été créé avec succès !")
                     st.rerun()
                 else:
                     st.error("Veuillez remplir tous les champs.")
