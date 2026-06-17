@@ -471,7 +471,7 @@ if user["role"] == "admin":
         
         # --- INTERFACE DE MODIFICATION / SUPPRESSION INDIVIDUELLE ---
         for mail, data in list(st.session_state["utilisateurs"].items()):
-            with st.expander(f"👤 {data['nom']} ({mail}) — Rôle : {data['role'].upper()}"):
+            with st.expander(f"{data['nom']} ({mail}) — Rôle : {data['role'].upper()}"):
                 col_g1, col_g2 = st.columns(2)
                 
                 with col_g1:
@@ -490,7 +490,7 @@ if user["role"] == "admin":
                     if mail == user["email"]:
                         st.warning("Vous ne pouvez pas supprimer le compte avec lequel vous êtes connecté.")
                     else:
-                        if st.button(f"❌ Supprimer définitivement ce compte", key=f"btn-suppr-{mail}", type="primary"):
+                        if st.button(f"Supprimer définitivement ce compte", key=f"btn-suppr-{mail}", type="primary"):
                             del st.session_state["utilisateurs"][mail]
                             sauvegarder_donnees()
                             st.toast("Compte supprimé avec succès !")
