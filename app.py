@@ -339,23 +339,21 @@ if user["role"] != "admin":
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Soumettre un Rapport de Chantier</h2>", unsafe_allow_html=True)
         with st.form("form_rapport_employe", clear_on_submit=True):
             
-            # 1. On récupère la liste de SES chantiers et on ajoute l'option manuelle
+            # 1. On récupère la liste dynamique de ses chantiers réels présents dans le planning
             chantiers_employe = list(set([s["lieu"] for s in st.session_state["plannings"] if user["email"] in s.get("participants", [])]))
-            options_barre = chantiers_employe + ["+ SAISIR UN AUTRE CHANTIER..."]
             
-            # 2. La barre de sélection dynamique unique (avec recherche automatique Streamlit)
-            choix_chantier = st.selectbox(
-                "Sélectionnez le chantier concerné",
-                options=options_barre
-            )
+            # 2. Liste déroulante classique (uniquement ses chantiers réels)
+            choix_chantier = st.selectbox("Sélectionnez le chantier concerné", options=chantiers_employe)
             
-            # 3. Le champ texte n'apparaît QUE si l'option de saisie libre est sélectionnée
-            lieu_manuel = ""
-            if choix_chantier == "+ SAISIR UN AUTRE CHANTIER...":
-                lieu_manuel = st.text_input("Saisissez manuellement le nom du chantier :").strip().upper()
+            # 3. Case à cocher et champ de texte pour taper manuellement
+            autre_chantier = st.checkbox("Autre chantier (cocher pour saisir manuellement)")
+            lieu_manuel = st.text_input("Nom du chantier (si non présent dans la liste ci-dessus)")
             
-            # Calcul du nom de chantier final
-            lieu_final = lieu_manuel if choix_chantier == "+ SAISIR UN AUTRE CHANTIER..." else choix_chantier
+            # Détermination du lieu final selon le choix de l'employé
+            if autre_chantier:
+                lieu_final = lieu_manuel.strip().upper()
+            else:
+                lieu_final = choix_chantier
                 
             date_rapport = st.date_input("Date du jour", datetime.now().date(), format="DD/MM/YYYY")
             contenu_rapport = st.text_area("Compte-rendu (travaux réalisés, problèmes rencontrés, matériel manquant...)", height=200)
