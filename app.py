@@ -1,220 +1,497 @@
 import streamlit as st
 from datetime import datetime, timedelta
-import pandas as pd
+import calendar
 import extra_streamlit_components as stx
 from io import BytesIO
-import time
+import json
+import os
 
-# Importations ReportLab pour le PDF
+# Importations ReportLab
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-# --- CONFIGURATION ---
-st.set_page_config(page_title="Planning Arhen Energy", page_icon="logo.png", layout="wide")
+# --- CONFIGURATION INITIALE DE L'APPLICATION ---
+st.set_page_config(page_title="Planning Entreprise", page_icon="logo.png", layout="wide")
 
-# URL de ton Google Sheets (Lecture seule via CSV pour la rapidité)
-SHEET_ID = "1nIiT1ql3mL4VmcBuLlST8QD0QKItAHq72B9P0THH-ns"
-URL_USERS = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=utilisateurs"
-URL_PLANS = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=plannings"
+# --- CONFIGURATION DE LA PERSISTANCE (JSON) ---
+FICHIER_DONNEES = "donnees.json"
 
 def charger_donnees():
-    """Charge les utilisateurs et chantiers depuis Google Sheets."""
-    try:
-        df_u = pd.read_csv(URL_USERS)
-        df_u.columns = [c.lower().strip() for c in df_u.columns]
-        utilisateurs = {}
-        for _, r in df_u.iterrows():
-            mail = str(r['email']).strip()
-            utilisateurs[mail] = {"nom": str(r['nom']), "role": str(r['role']).lower(), "mdp": str(r['mdp'])}
-    except:
-        utilisateurs = {"admin@arhen.energy": {"nom": "Admin", "role": "admin", "mdp": "admin123"}}
+    """Charge les données depuis le fichier JSON ou initialise les données par défaut."""
+    donnees_par_defaut = {
+        "utilisateurs": {
+            "admin@entreprise.com": {"nom": "Admin", "role": "admin", "mdp": "admin123"},
+        },
+        "plannings": [
+            {
+                "id": 1,
+                "participants": ["romuald@entreprise.com", "hasan@entreprise.com", "loic@entreprise.com"],
+                "date_debut": "2026-06-15", 
+                "date_fin": "2026-06-19",
+                "lieu": "CAP FERRET",
+                "tache": "Chantier – Villa Cap Ferret\nSuivi de la production de la structure principale et raccordements.",
+                "statut": "Production"
+            },
+            {
+                "id": 2,
+                "participants": ["bob@entreprise.com"],
+                "date_debut": "2026-06-17", 
+                "date_fin": "2026-06-17",
+                "lieu": "BOUTIQUE",
+                "tache": "Ouverture de la boutique et gestion des flux de clients matinaux.", 
+                "statut": "Planifié"
+            }
+        ]
+    }
+    
+    if os.path.exists(FICHIER_DONNEES):
+        try:
+            with open(FICHIER_DONNEES, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return donnees_par_defaut
+    else:
+        with open(FICHIER_DONNEES, "w", encoding="utf-8") as f:
+            json.dump(donnees_par_defaut, f, ensure_ascii=False, indent=4)
+        return donnees_par_defaut
 
-    try:
-        df_p = pd.read_csv(URL_PLANS)
-        df_p.columns = [c.lower().strip() for c in df_p.columns]
-        plannings = []
-        for _, r in df_p.iterrows():
-            parts = [p.strip() for p in str(r['participants']).split(",") if p.strip()]
-            plannings.append({
-                "id": int(r['id']), "participants": parts, 
-                "date_debut": str(r['date_debut']), "date_fin": str(r['date_fin']),
-                "lieu": str(r['lieu']).upper(), "tache": str(r['tache']), "statut": str(r['statut'])
-            })
-    except:
-        plannings = []
-    return utilisateurs, plannings
+def sauvegarder_donnees():
+    """Sauvegarde l'état actuel de session_state dans le fichier JSON."""
+    donnees_a_sauver = {
+        "utilisateurs": st.session_state["utilisateurs"],
+        "plannings": st.session_state["plannings"]
+    }
+    with open(FICHIER_DONNEES, "w", encoding="utf-8") as f:
+        json.dump(donnees_a_sauver, f, ensure_ascii=False, indent=4)
 
-# Initialisation Session State
+# --- CHARGEMENT INITIAL EN SESSION_STATE ---
+donnees_chargees = charger_donnees()
+
 if "utilisateurs" not in st.session_state:
-    u, p = charger_donnees()
-    st.session_state["utilisateurs"] = u
-    st.session_state["plannings"] = p
+    st.session_state["utilisateurs"] = donnees_chargees["utilisateurs"]
+
+if "plannings" not in st.session_state:
+    st.session_state["plannings"] = donnees_chargees["plannings"]
 
 if "date_calendrier" not in st.session_state:
-    st.session_state["date_calendrier"] = datetime.now().date()
+    st.session_state["date_calendrier"] = datetime(2026, 6, 15).date()
 
-# --- GESTIONNAIRE DE COOKIES (CONNEXION PERSISTANTE) ---
+# Mode édition pour modifier un chantier
+if "id_chantier_edition" not in st.session_state:
+    st.session_state["id_chantier_edition"] = None
+
+# --- GESTIONNAIRE DE COOKIES ---
 cookie_manager = stx.CookieManager()
 
-# --- LOGIQUE DE CONNEXION AMÉLIORÉE (ANTI-DÉCONNEXION) ---
-if "user_connecte" not in st.session_state:
-    time.sleep(0.2)  # On laisse un instant au navigateur pour transmettre le cookie
+COULEURS_STATUTS = {
+    "Production": {"accent": "#38BDF8", "bg_dot": "#0284C7"},
+    "Planifié": {"accent": "#34D399", "bg_dot": "#059669"},
+    "Urgent": {"accent": "#F87171", "bg_dot": "#DC2626"}
+}
+
+# --- GESTION DE LA SESSION ---
+saved_user = None
+try:
     saved_user = cookie_manager.get(cookie="user_session")
-    if saved_user in st.session_state["utilisateurs"]:
+except Exception:
+    saved_user = None
+
+if saved_user is None and "cookie_init" not in st.session_state:
+    st.session_state["cookie_init"] = True
+    st.stop()
+
+if "user_connecte" not in st.session_state:
+    if saved_user and saved_user in st.session_state["utilisateurs"]:
         st.session_state["user_connecte"] = {**st.session_state["utilisateurs"][saved_user], "email": saved_user}
     else:
         st.session_state["user_connecte"] = None
 
+# Écran de connexion
 if st.session_state["user_connecte"] is None:
-    st.title("Connexion")
-    e_mail = st.text_input("Email").strip()
-    m_dp = st.text_input("Mot de passe", type="password").strip()
-    if st.button("Se connecter", use_container_width=True):
-        if e_mail in st.session_state["utilisateurs"] and st.session_state["utilisateurs"][e_mail]["mdp"] == m_dp:
-            st.session_state["user_connecte"] = {**st.session_state["utilisateurs"][e_mail], "email": e_mail}
-            cookie_manager.set("user_session", e_mail, max_age=2592000)  # Garder connecté 30 jours
-            st.rerun()
-        else:
-            st.error("Identifiants incorrects")
+    st.subheader("Connexion")
+    email_saisi = st.text_input("Adresse Email")
+    mdp_saisi = st.text_input("Mot de passe", type="password")
+    
+    col_connexion, col_aide = st.columns([1, 1])
+    with col_connexion:
+        if st.button("Se connecter", use_container_width=True):
+            if email_saisi in st.session_state["utilisateurs"] and st.session_state["utilisateurs"][email_saisi]["mdp"] == mdp_saisi:
+                st.session_state["user_connecte"] = {**st.session_state["utilisateurs"][email_saisi], "email": email_saisi}
+                cookie_manager.set("user_session", email_saisi, max_age=2592000)
+                st.rerun()
+            else:
+                st.error("Identifiants incorrects.")
+                
+    with col_aide:
+        st.markdown("<p style='font-size: 13px; color: #64748B; margin-top: 8px;'>Mot de passe oublié ? Contactez votre administrateur.</p>", unsafe_allow_html=True)
+        
     st.stop()
 
-# --- ACCÈS RÉUSSI ---
-user = st.session_state["user_connecte"]
+# --- CONFIGURATION DES DATES ---
+date_active = st.session_state["date_calendrier"]
+lundi_semaine = date_active - timedelta(days=date_active.weekday())
+dimanche_semaine = lundi_semaine + timedelta(days=6)
 
-# --- CALCUL DES DATES SEMAINE ---
-date_sel = st.session_state["date_calendrier"]
-lundi = date_sel - timedelta(days=date_sel.weekday())
+noms_jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
 jours = []
 for i in range(7):
-    d = lundi + timedelta(days=i)
-    jours.append({"nom": ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"][i], "date": d})
+    j = lundi_semaine + timedelta(days=i)
+    jours.append({"nom": noms_jours[i], "date_texte": j.strftime('%d/%m'), "date_str": str(j)})
 
-# --- FONCTION PDF ---
-def generer_pdf(missions):
+# --- GÉNÉRATION DU PDF ---
+def generer_pdf_global(liste_missions):
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter))
-    elements = []
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=15, leftMargin=15, topMargin=20, bottomMargin=20)
+    story = []
     styles = getSampleStyleSheet()
     
-    elements.append(Paragraph(f"Planning Arhen Energy - Semaine du {lundi.strftime('%d/%m/%Y')}", styles['Title']))
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, leading=20, textColor=colors.HexColor("#0F172A"), alignment=0)
+    header_style = ParagraphStyle('HeaderTable', fontName="Helvetica-Bold", fontSize=9, leading=11, textColor=colors.white, alignment=1)
+    cell_style = ParagraphStyle('CellTable', fontName="Helvetica", fontSize=8, leading=11, textColor=colors.HexColor("#1E293B"))
+    cell_bold = ParagraphStyle('CellBold', fontName="Helvetica-Bold", fontSize=8, leading=11, textColor=colors.HexColor("#0F172A"))
     
-    data = [["Lieu", "Mission", "Début", "Fin", "Équipe", "Statut"]]
-    for m in missions:
-        equipe = ", ".join([st.session_state['utilisateurs'].get(e, {'nom': e})['nom'] for e in m['participants']])
-        data.append([m['lieu'], m['tache'][:50], m['date_debut'], m['date_fin'], equipe, m['statut']])
+    titre = f"RAPPORT DE PLANNING GENERAL — SEMAINE DU {lundi_semaine.strftime('%d/%m/%Y')} AU {dimanche_semaine.strftime('%d/%m/%Y')}"
+    story.append(Paragraph(titre, title_style))
+    story.append(Spacer(1, 15))
     
-    t = Table(data, colWidths=[100, 250, 70, 70, 150, 80])
-    t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.black), ('TEXTCOLOR', (0,0), (-1,0), colors.white), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
-    elements.append(t)
-    doc.build(elements)
+    headers = [
+        Paragraph("<b>Lieu</b>", header_style),
+        Paragraph("<b>Objet / Mission</b>", header_style),
+        Paragraph("<b>Début</b>", header_style),
+        Paragraph("<b>Fin</b>", header_style),
+        Paragraph("<b>Participants</b>", header_style),
+        Paragraph("<b>Statut</b>", header_style)
+    ]
+    
+    table_data = [headers]
+    
+    for s in liste_missions:
+        noms_equipe = ", ".join([st.session_state["utilisateurs"][emp]["nom"] for emp in s.get("participants", []) if emp in st.session_state["utilisateurs"]])
+        tache_propre = s['tache'].replace('\n', '<br/>')
+        
+        str_deb = s.get("date_debut", s.get("date", ""))
+        str_fin = s.get("date_fin", s.get("date", ""))
+        
+        d_deb = datetime.strptime(str_deb, "%Y-%m-%d").strftime("%d/%m/%Y") if str_deb else "—"
+        d_fin = datetime.strptime(str_fin, "%Y-%m-%d").strftime("%d/%m/%Y") if str_fin else "—"
+        
+        table_data.append([
+            Paragraph(s['lieu'], cell_bold),
+            Paragraph(tache_propre, cell_style),
+            Paragraph(d_deb, cell_style),
+            Paragraph(d_fin, cell_style),
+            Paragraph(noms_equipe, cell_style),
+            Paragraph(s.get('statut', 'Planifié'), cell_bold)
+        ])
+        
+    t = Table(table_data, colWidths=[110, 292, 80, 80, 140, 80])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0F172A")),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+    ]))
+    story.append(t)
+    doc.build(story)
     buffer.seek(0)
     return buffer
 
+# --- FILTRES ---
+employe_filtre = st.session_state.get("emp_filtre_key", "Tous les employés")
+user = st.session_state["user_connecte"]
+if user["role"] != "admin":
+    employe_filtre = user["email"]
+
+# --- COLLECTE DES MISSIONS ---
+missions_semaine = []
+for s in st.session_state["plannings"]:
+    str_deb = s.get("date_debut", s.get("date"))
+    str_fin = s.get("date_fin", s.get("date"))
+    if not str_deb or not str_fin:
+        continue
+    deb_s = datetime.strptime(str_deb, "%Y-%m-%d").date()
+    fin_s = datetime.strptime(str_fin, "%Y-%m-%d").date()
+    
+    if not (fin_s < lundi_semaine or deb_s > dimanche_semaine):
+        if employe_filtre != "Tous les employés" and employe_filtre not in s.get("participants", []):
+            continue
+        missions_semaine.append(s)
+
 # --- BARRE LATÉRALE ---
-st.sidebar.title(f"Salut, {user['nom']}")
-st.sidebar.info(f"Rôle : {user['role'].upper()}")
+st.sidebar.markdown(f"### Utilisateur : {user['nom']}")
+st.sidebar.markdown(f"**Rôle système :** {user['role'].upper()}")
+st.sidebar.markdown("---")
 
-# Bouton PDF
-missions_visibles = [m for m in st.session_state["plannings"] if not (datetime.strptime(m["date_fin"], "%Y-%m-%d").date() < lundi or datetime.strptime(m["date_debut"], "%Y-%m-%d").date() > lundi + timedelta(days=6))]
-if missions_visibles:
-    st.sidebar.download_button("📄 Télécharger le PDF", data=generer_pdf(missions_visibles), file_name="planning.pdf", mime="application/pdf", use_container_width=True)
+try:
+    pdf_data = generer_pdf_global(missions_semaine)
+    st.sidebar.download_button(
+        label="📄 Télécharger le rapport PDF",
+        data=pdf_data,
+        file_name=f"planning_{lundi_semaine.strftime('%d_%m_%Y')}.pdf",
+        mime="application/pdf",
+        use_container_width=True
+    )
+except Exception:
+    st.sidebar.error("Erreur lors de la préparation du PDF.")
 
+st.sidebar.markdown("<br/>", unsafe_allow_html=True)
 if st.sidebar.button("Déconnexion", use_container_width=True):
     st.session_state["user_connecte"] = None
-    cookie_manager.delete("user_session")
+    try:
+        cookie_manager.delete("user_session")
+    except Exception:
+        pass
     st.rerun()
 
-if st.sidebar.button("🔄 Actualiser depuis Google Sheets", use_container_width=True):
-    u, p = charger_donnees()
-    st.session_state["utilisateurs"] = u
-    st.session_state["plannings"] = p
-    st.rerun()
+# --- CSS STYLES ---
+st.markdown("""
+    <style>
+    .header-jour { text-align: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #334155; }
+    .nom-jour { margin: 0; font-size: 11px; opacity: 0.6; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+    .num-jour { margin: 4px 0 0 0; font-size: 22px; font-weight: 800; }
+    .zone-shifts-jour { display: flex; flex-direction: column; gap: 12px; }
+    .shift-card-container { 
+        border-radius: 8px; 
+        background: #1E293B; 
+        border-left: 4px solid #64748B;
+        padding: 12px; 
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2px;
+    }
+    .shift-top-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .shift-lieu { margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #94A3B8; }
+    .shift-team { margin: 0 0 6px 0; font-size: 11px; color: #38BDF8; font-style: italic; }
+    .shift-task { margin: 0; font-size: 12px; color: #E2E8F0; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
+    </style>
+""", unsafe_allow_html=True)
 
-# --- INTERFACE ---
+# --- ONGLETS ---
 if user["role"] == "admin":
-    tabs = st.tabs(["📅 Calendrier", "➕ Planifier", "👥 Gestion des Comptes"])
+    onglet_actif = st.tabs(["Calendrier", "Planifier", "Liste des Comptes"])
 else:
-    tabs = st.tabs(["📅 Calendrier"])
+    onglet_actif = st.tabs(["Calendrier"])
 
-# TAB 1 : CALENDRIER
-with tabs[0]:
-    st.date_input("Aller à une date", key="date_calendrier")
+# ==========================================
+# ONGLET 1 : CALENDRIER
+# ==========================================
+with onglet_actif[0]:
+    st.markdown("<h2 style='margin: 0 0 15px 0;'>Calendrier</h2>", unsafe_allow_html=True)
+    col_date, col_filtre = st.columns(2)
+
+    with col_date:
+        st.date_input("Sélection de la date", key="date_calendrier", format="DD/MM/YYYY")
+
+    with col_filtre:
+        liste_employes_choix = ["Tous les employés"] + list(st.session_state["utilisateurs"].keys())
+        def formater_nom_filtre(x):
+            if x == "Tous les employés": return "Tous les employés"
+            return st.session_state["utilisateurs"][x]["nom"]
+            
+        if user["role"] == "admin":
+            st.selectbox("Filtrer par employé", options=liste_employes_choix, format_func=formater_nom_filtre, key="emp_filtre_key")
+        else:
+            st.session_state["emp_filtre_key"] = user["email"]
+
+    # --- SÉCURITÉ FORMULAIRE D'ÉDITION ---
+    if st.session_state["id_chantier_edition"] is not None:
+        chantier_a_editer = next((c for c in st.session_state["plannings"] if c["id"] == st.session_state["id_chantier_edition"]), None)
+        if chantier_a_editer:
+            st.markdown("<br/>", unsafe_allow_html=True)
+            st.info(f"🛠️ Mode édition : Modification du chantier **{chantier_a_editer['lieu']}**")
+            with st.form("form_edition_chantier"):
+                col_e1, col_e2 = st.columns(2)
+                with col_e1:
+                    e_equipe = st.multiselect("Équipe", options=list(st.session_state["utilisateurs"].keys()), default=chantier_a_editer["participants"], format_func=lambda x: st.session_state["utilisateurs"][x]["nom"])
+                    e_debut = st.date_input("Début", datetime.strptime(chantier_a_editer["date_debut"], "%Y-%m-%d").date(), format="DD/MM/YYYY")
+                    e_fin = st.date_input("Fin", datetime.strptime(chantier_a_editer["date_fin"], "%Y-%m-%d").date(), format="DD/MM/YYYY")
+                with col_e2:
+                    e_lieu = st.text_input("Lieu", chantier_a_editer["lieu"])
+                    e_statut = st.selectbox("Statut", ["Production", "Planifié", "Urgent"], index=["Production", "Planifié", "Urgent"].index(chantier_a_editer["statut"]) if chantier_a_editer["statut"] in ["Production", "Planifié", "Urgent"] else 1)
+                e_tache = st.text_area("Descriptif", chantier_a_editer["tache"])
+                
+                btn_c1, btn_c2 = st.columns(2)
+                with btn_c1:
+                    if st.form_submit_button("Modifier", use_container_width=True):
+                        chantier_a_editer["participants"] = e_equipe
+                        chantier_a_editer["date_debut"] = str(e_debut)
+                        chantier_a_editer["date_fin"] = str(e_fin)
+                        chantier_a_editer["lieu"] = e_lieu.upper()
+                        chantier_a_editer["statut"] = e_statut
+                        chantier_a_editer["tache"] = e_tache
+                        sauvegarder_donnees()
+                        st.session_state["id_chantier_edition"] = None
+                        st.toast("Chantier mis à jour !")
+                        st.rerun()
+                with btn_c2:
+                    if st.form_submit_button("Annuler", use_container_width=True):
+                        st.session_state["id_chantier_edition"] = None
+                        st.rerun()
+
+    st.markdown("<br/>", unsafe_allow_html=True)
     cols = st.columns(7)
-    for i, j in enumerate(jours):
+
+    for i, jour in enumerate(jours):
+        current_date = datetime.strptime(jour["date_str"], "%Y-%m-%d").date()
         with cols[i]:
-            st.markdown(f"**{j['nom']} {j['date'].strftime('%d/%m')}**")
-            for p in st.session_state["plannings"]:
-                d_deb = datetime.strptime(p["date_debut"], "%Y-%m-%d").date()
-                d_fin = datetime.strptime(p["date_fin"], "%Y-%m-%d").date()
-                if d_deb <= j["date"] <= d_fin:
-                    with st.expander(f"{p['lieu']}"):
-                        st.caption(f"Status: {p['statut']}")
-                        st.write(p["tache"])
-                        if user["role"] == "admin":
-                            if st.button("Supprimer", key=f"del-{p['id']}-{i}"):
-                                st.session_state["plannings"].remove(p)
+            st.markdown(f'<div class="header-jour"><p class="nom-jour">{jour["nom"]}</p><p class="num-jour">{jour["date_texte"]}</p></div>', unsafe_allow_html=True)
+            st.markdown('<div class="zone-shifts-jour">', unsafe_allow_html=True)
+            
+            shifts_du_jour = []
+            for s in st.session_state["plannings"]:
+                str_deb = s.get("date_debut", s.get("date"))
+                str_fin = s.get("date_fin", s.get("date"))
+                if not str_deb or not str_fin:
+                    continue
+                deb = datetime.strptime(str_deb, "%Y-%m-%d").date()
+                fin = datetime.strptime(str_fin, "%Y-%m-%d").date()
+                
+                if deb <= current_date <= fin:
+                    if employe_filtre != "Tous les employés" and employe_filtre not in s.get("participants", []):
+                        continue
+                    shifts_du_jour.append(s)
+                
+            if shifts_du_jour:
+                for idx, s in enumerate(shifts_du_jour):
+                    statut_style = COULEURS_STATUTS.get(s.get("statut", "Planifié"), {"accent": "#94A3B8", "bg_dot": "#475569"})
+                    noms_equipe = ", ".join([st.session_state["utilisateurs"][emp]["nom"] for emp in s.get("participants", []) if emp in st.session_state["utilisateurs"]])
+                    
+                    if user["role"] == "admin":
+                        with st.popover(s['lieu'], use_container_width=True):
+                            st.markdown(f"**Chantier :** {s['lieu']}")
+                            st.markdown(f"**Équipe :** {noms_equipe}")
+                            st.markdown(f"**Tâche :** {s['tache']}")
+                            st.markdown(f"**Statut :** {s.get('statut', 'Planifié')}")
+                            st.markdown("---")
+                            
+                            if st.button("Modifier ce chantier", key=f"btn-modif-final-{s['id']}-{i}-{idx}", use_container_width=True):
+                                st.session_state["id_chantier_edition"] = s["id"]
                                 st.rerun()
+                                
+                            if st.button("Supprimer ce chantier", key=f"btn-suppr-final-{s['id']}-{i}-{idx}", type="primary", use_container_width=True):
+                                st.session_state["plannings"].remove(s)
+                                sauvegarder_donnees()
+                                st.rerun()
+                    else:
+                        st.markdown(f"""
+                        <div class="shift-card-container" style="border-left-color: {statut_style['accent']};">
+                            <div class="shift-top-row">
+                                <span class="status-dot" style="background-color: {statut_style['bg_dot']};"></span>
+                                <p class="shift-lieu">{s['lieu']}</p>
+                            </div>
+                            <p class="shift-team">Equipe: {noms_equipe}</p>
+                            <p class="shift-task">{s['tache']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+            else:
+                st.markdown("<p style='text-align: center; opacity: 0.2; font-size: 12px; margin-top: 10px;'>Aucun chantier</p>", unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
-# TAB 2 : PLANIFIER
+# ==========================================
+# ONGLET 2 : PLANIFIER
+# ==========================================
 if user["role"] == "admin":
-    with tabs[1]:
-        with st.form("new_plan"):
-            lieu = st.text_input("Lieu")
-            tache = st.text_area("Description")
-            equipe = st.multiselect("Équipe", options=list(st.session_state["utilisateurs"].keys()), format_func=lambda x: st.session_state["utilisateurs"][x]["nom"])
-            d1 = st.date_input("Début")
-            d2 = st.date_input("Fin")
-            stat = st.selectbox("Statut", ["Production", "Planifié", "Urgent"])
-            if st.form_submit_button("Ajouter à l'écran"):
-                nid = max([x["id"] for x in st.session_state["plannings"]] + [0]) + 1
-                st.session_state["plannings"].append({"id": nid, "lieu": lieu.upper(), "tache": tache, "participants": equipe, "date_debut": str(d1), "date_fin": str(d2), "statut": stat})
-                st.success("Ajouté ! Pensez à sauvegarder ci-dessous.")
-                st.rerun()
+    with onglet_actif[1]:
+        st.markdown("<h2 style='margin: 0 0 15px 0;'>Planifier une Mission</h2>", unsafe_allow_html=True)
+        with st.form("form_centre_shift", clear_on_submit=True):
+            col_1, col_2 = st.columns(2)
+            with col_1:
+                equipe_sel = st.multiselect("Équipe / Participants requis", options=list(st.session_state["utilisateurs"].keys()), format_func=lambda x: st.session_state["utilisateurs"][x]["nom"])
+                date_debut_sel = st.date_input("Date de DÉBUT", datetime.now().date(), format="DD/MM/YYYY")
+                date_fin_sel = st.date_input("Date de FIN", datetime.now().date(), format="DD/MM/YYYY")
+            with col_2:
+                lieu_input = st.text_input("Lieu ou Nom du projet")
+                statut_selection = st.selectbox("Statut du chantier", ["Production", "Planifié", "Urgent", "Autre..."])
+                statut_autre = st.text_input("Si Autre, écrivez le statut personnalisé ici")
+            
+            tache_input = st.text_area("Descriptif précis des travaux / tâches à effectuer", placeholder="Détaillez ici l'ordre de mission...", height=150)
+            
+            st.markdown("<br/>", unsafe_allow_html=True)
+            if st.form_submit_button("Planifier", use_container_width=True):
+                statut_final = statut_autre.strip() if statut_selection == "Autre..." else statut_selection
+                if not statut_final:
+                    statut_final = "Planifié"
+                
+                if equipe_sel and lieu_input and tache_input and (date_fin_sel >= date_debut_sel):
+                    nouvel_id = max([s["id"] for s in st.session_state["plannings"]]) + 1 if st.session_state["plannings"] else 1
+                    st.session_state["plannings"].append({
+                        "id": nouvel_id,
+                        "participants": equipe_sel,
+                        "date_debut": str(date_debut_sel),
+                        "date_fin": str(date_fin_sel),
+                        "lieu": lieu_input.upper(),
+                        "tache": tache_input,
+                        "statut": statut_final
+                    })
+                    sauvegarder_donnees()
+                    st.toast("Mission enregistrée avec succès !")
+                    st.rerun()
+                elif date_fin_sel < date_debut_sel:
+                    st.error("La date de fin ne peut pas être avant la date de début.")
+                else:
+                    st.error("Veuillez remplir au moins les participants, le lieu et le descriptif.")
 
-# TAB 3 : GESTION DES COMPTES
+# ==========================================
+# ONGLET 3 : LISTE DES COMPTES (GESTION COMPLETE)
+# ==========================================
 if user["role"] == "admin":
-    with tabs[2]:
-        st.subheader("Créer un compte")
-        with st.form("new_user"):
-            c1, c2 = st.columns(2)
-            n_mail = c1.text_input("Email")
-            n_nom = c2.text_input("Nom complet")
-            n_mdp = c1.text_input("Mot de passe")
-            n_role = c2.selectbox("Rôle", ["admin", "employe"])
-            if st.form_submit_button("Créer le compte"):
-                st.session_state["utilisateurs"][n_mail] = {"nom": n_nom, "mdp": n_mdp, "role": n_role}
-                st.success("Compte ajouté !")
-                st.rerun()
+    with onglet_actif[2]:
+        st.markdown("<h2 style='margin: 0 0 15px 0;'>Créer un nouveau compte</h2>", unsafe_allow_html=True)
+        with st.form("form_centre_compte", clear_on_submit=True):
+            col_c1, col_c2 = st.columns(2)
+            with col_c1:
+                nouvel_email = st.text_input("Adresse e-mail")
+                nouveau_nom = st.text_input("Nom")
+            with col_c2:
+                nouveau_mdp = st.text_input("Mot de passe", type="password")
+                nouveau_role = st.selectbox("Rôle du compte", options=["Employé", "Admin"])
+            
+            st.markdown("<br/>", unsafe_allow_html=True)
+            if st.form_submit_button("Créer le compte", use_container_width=True):
+                if nouvel_email and nouveau_nom and nouveau_mdp:
+                    role_technique = "admin" if nouveau_role == "Admin" else "employe"
+                    
+                    st.session_state["utilisateurs"][nouvel_email] = {
+                        "nom": nouveau_nom, 
+                        "role": role_technique, 
+                        "mdp": nouveau_mdp
+                    }
+                    sauvegarder_donnees()
+                    st.toast(f"Le compte de {nouveau_nom} ({nouveau_role}) a été créé avec succès !")
+                    st.rerun()
+                else:
+                    st.error("Veuillez remplir tous les champs.")
 
-        st.divider()
-        st.subheader("Liste des comptes existants")
-        for mail, info in list(st.session_state["utilisateurs"].items()):
-            with st.expander(f"👤 {info['nom']} ({mail}) - {info['role'].upper()}"):
-                nouveau_mdp = st.text_input(f"Nouveau MDP pour {info['nom']}", value=info["mdp"], key=f"pwd-{mail}")
-                if nouveau_mdp != info["mdp"]:
-                    if st.button("Enregistrer le MDP", key=f"save-{mail}"):
-                        st.session_state["utilisateurs"][mail]["mdp"] = nouveau_mdp
-                        st.success("Mot de passe changé !")
-                        st.rerun()
-                if mail != user["email"]:
-                    if st.button("🗑️ Supprimer ce compte", key=f"del-user-{mail}"):
-                        del st.session_state["utilisateurs"][mail]
-                        st.warning("Compte supprimé !")
-                        st.rerun()
-
-        # Bloc de sauvegarde indispensable
-        st.divider()
-        st.subheader("💾 Enregistrer les modifications vers Google Sheets")
-        col_u, col_p = st.columns(2)
-        with col_u:
-            st.write("**Étape 1 : Copie ce tableau dans ton onglet 'utilisateurs' :**")
-            df_u_save = pd.DataFrame([{"email": k, "nom": v["nom"], "role": v["role"], "mdp": v["mdp"]} for k, v in st.session_state["utilisateurs"].items()])
-            st.dataframe(df_u_save, hide_index=True)
-        with col_p:
-            st.write("**Étape 2 : Copie ce tableau dans ton onglet 'plannings' :**")
-            df_p_save = pd.DataFrame(st.session_state["plannings"])
-            if not df_p_save.empty:
-                df_p_save["participants"] = df_p_save["participants"].apply(lambda x: ",".join(x))
-            st.dataframe(df_p_save, hide_index=True)
+        st.markdown("---")
+        st.markdown("<h2 style='margin: 0 0 15px 0;'>Gestion des accès et Mots de Passe</h2>", unsafe_allow_html=True)
+        
+        # --- INTERFACE DE MODIFICATION / SUPPRESSION INDIVIDUELLE ---
+        for mail, data in list(st.session_state["utilisateurs"].items()):
+            with st.expander(f"👤 {data['nom']} ({mail}) — Rôle : {data['role'].upper()}"):
+                col_g1, col_g2 = st.columns(2)
+                
+                with col_g1:
+                    # Permet de changer le mot de passe directement
+                    nouveau_mdp_saisi = st.text_input(f"Modifier le mot de passe pour {data['nom']}", value=data["mdp"], key=f"mdp-{mail}", type="password")
+                    if nouveau_mdp_saisi != data["mdp"]:
+                        if st.button(f"Enregistrer le nouveau MDP", key=f"btn-mdp-{mail}"):
+                            st.session_state["utilisateurs"][mail]["mdp"] = nouveau_mdp_saisi
+                            sauvegarder_donnees()
+                            st.toast("Mot de passe modifié avec succès !")
+                            st.rerun()
+                            
+                with col_g2:
+                    st.markdown("<p style='font-size: 14px; margin-bottom: 25px;'>Zone dangereuse :</p>", unsafe_allow_html=True)
+                    # Sécurité pour éviter de supprimer le compte admin principal avec lequel on est connecté
+                    if mail == user["email"]:
+                        st.warning("Vous ne pouvez pas supprimer le compte avec lequel vous êtes connecté.")
+                    else:
+                        if st.button(f"❌ Supprimer définitivement ce compte", key=f"btn-suppr-{mail}", type="primary"):
+                            del st.session_state["utilisateurs"][mail]
+                            sauvegarder_donnees()
+                            st.toast("Compte supprimé avec succès !")
+                            st.rerun()
