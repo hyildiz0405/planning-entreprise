@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import extra_streamlit_components as stx
 from io import BytesIO
+import time
 
 # Importations ReportLab pour le PDF
 from reportlab.lib.pagesizes import letter, landscape
@@ -57,8 +58,9 @@ if "date_calendrier" not in st.session_state:
 # --- GESTIONNAIRE DE COOKIES (CONNEXION PERSISTANTE) ---
 cookie_manager = stx.CookieManager()
 
-# --- LOGIQUE DE CONNEXION ---
+# --- LOGIQUE DE CONNEXION AMÉLIORÉE (ANTI-DÉCONNEXION) ---
 if "user_connecte" not in st.session_state:
+    time.sleep(0.2)  # On laisse un instant au navigateur pour transmettre le cookie
     saved_user = cookie_manager.get(cookie="user_session")
     if saved_user in st.session_state["utilisateurs"]:
         st.session_state["user_connecte"] = {**st.session_state["utilisateurs"][saved_user], "email": saved_user}
@@ -72,7 +74,7 @@ if st.session_state["user_connecte"] is None:
     if st.button("Se connecter", use_container_width=True):
         if e_mail in st.session_state["utilisateurs"] and st.session_state["utilisateurs"][e_mail]["mdp"] == m_dp:
             st.session_state["user_connecte"] = {**st.session_state["utilisateurs"][e_mail], "email": e_mail}
-            cookie_manager.set("user_session", e_mail, max_age=2592000)
+            cookie_manager.set("user_session", e_mail, max_age=2592000)  # Garder connecté 30 jours
             st.rerun()
         else:
             st.error("Identifiants incorrects")
@@ -124,7 +126,7 @@ if st.sidebar.button("Déconnexion", use_container_width=True):
     cookie_manager.delete("user_session")
     st.rerun()
 
-if st.sidebar.button("🔄 Forcer l'actualisation Google Sheets", use_container_width=True):
+if st.sidebar.button("🔄 Actualiser depuis Google Sheets", use_container_width=True):
     u, p = charger_donnees()
     st.session_state["utilisateurs"] = u
     st.session_state["plannings"] = p
@@ -168,10 +170,10 @@ if user["role"] == "admin":
             if st.form_submit_button("Ajouter à l'écran"):
                 nid = max([x["id"] for x in st.session_state["plannings"]] + [0]) + 1
                 st.session_state["plannings"].append({"id": nid, "lieu": lieu.upper(), "tache": tache, "participants": equipe, "date_debut": str(d1), "date_fin": str(d2), "statut": stat})
-                st.success("Ajouté ! Note : n'oubliez pas de copier vos données vers Google Sheets pour les fixer.")
+                st.success("Ajouté ! Pensez à sauvegarder ci-dessous.")
                 st.rerun()
 
-# TAB 3 : GESTION DES COMPTES (FONCTIONNALITÉS RESTAURÉES)
+# TAB 3 : GESTION DES COMPTES
 if user["role"] == "admin":
     with tabs[2]:
         st.subheader("Créer un compte")
@@ -190,34 +192,29 @@ if user["role"] == "admin":
         st.subheader("Liste des comptes existants")
         for mail, info in list(st.session_state["utilisateurs"].items()):
             with st.expander(f"👤 {info['nom']} ({mail}) - {info['role'].upper()}"):
-                # Changer le MDP
                 nouveau_mdp = st.text_input(f"Nouveau MDP pour {info['nom']}", value=info["mdp"], key=f"pwd-{mail}")
                 if nouveau_mdp != info["mdp"]:
                     if st.button("Enregistrer le MDP", key=f"save-{mail}"):
                         st.session_state["utilisateurs"][mail]["mdp"] = nouveau_mdp
                         st.success("Mot de passe changé !")
                         st.rerun()
-                
-                # Supprimer le compte
                 if mail != user["email"]:
                     if st.button("🗑️ Supprimer ce compte", key=f"del-user-{mail}"):
                         del st.session_state["utilisateurs"][mail]
                         st.warning("Compte supprimé !")
                         st.rerun()
 
-        # Bloc de sauvegarde pour l'admin
+        # Bloc de sauvegarde indispensable
         st.divider()
-        st.subheader("💾 Sauvegarde vers Google Sheets")
-        st.write("Copiez ces tableaux dans votre Google Sheets pour enregistrer définitivement.")
+        st.subheader("💾 Enregistrer les modifications vers Google Sheets")
         col_u, col_p = st.columns(2)
         with col_u:
-            st.write("**Onglet utilisateurs :**")
+            st.write("**Étape 1 : Copie ce tableau dans ton onglet 'utilisateurs' :**")
             df_u_save = pd.DataFrame([{"email": k, "nom": v["nom"], "role": v["role"], "mdp": v["mdp"]} for k, v in st.session_state["utilisateurs"].items()])
             st.dataframe(df_u_save, hide_index=True)
         with col_p:
-            st.write("**Onglet plannings :**")
+            st.write("**Étape 2 : Copie ce tableau dans ton onglet 'plannings' :**")
             df_p_save = pd.DataFrame(st.session_state["plannings"])
-            # Formater les participants en texte pour le Sheets
             if not df_p_save.empty:
                 df_p_save["participants"] = df_p_save["participants"].apply(lambda x: ",".join(x))
             st.dataframe(df_p_save, hide_index=True)
