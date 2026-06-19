@@ -17,7 +17,7 @@ from reportlab.lib import colors
 # --- CONFIGURATION INITIALE DE L'APPLICATION ---
 st.set_page_config(page_title="Planning Entreprise", page_icon="logo.png", layout="wide")
 
-# --- COMPTES UTILISATEURS MIS À JOUR ---
+# --- COMPTES UTILISATEURS ---
 UTILISATEURS = {
     "admin@entreprise.com": {"nom": "Admin", "role": "admin", "mdp": "admin123"},    
     "sb@arhen.energy": {"nom": "Samir BOUABDELLAH", "role": "admin", "mdp": "hml73200!"},
@@ -104,6 +104,8 @@ for i in range(7):
     j = lundi_semaine + timedelta(days=i)
     jours.append({"nom": noms_jours[i], "date_texte": j.strftime('%d/%m'), "date_str": str(j)})
 
+user = st.session_state["user_connecte"]
+
 # --- FONCTION DE GÉNÉRATION DU PDF ---
 def generer_pdf_global(liste_missions):
     buffer = BytesIO()
@@ -116,7 +118,7 @@ def generer_pdf_global(liste_missions):
     cell_style = ParagraphStyle('CellTable', fontName="Helvetica", fontSize=8, leading=11, textColor=colors.HexColor("#1E293B"))
     cell_bold = ParagraphStyle('CellBold', fontName="Helvetica-Bold", fontSize=8, leading=11, textColor=colors.HexColor("#0F172A"))
     
-    titre = f"RAPPORT DE PLANNING GENERAL — SEMAINE DU {lundi_semaine.strftime('%d/%m/%Y')} AU {dimanche_semaine.strftime('%d/%m/%Y')}"
+    titre = f"RAPPORT DE PLANNING — SEMAINE DU {lundi_semaine.strftime('%d/%m/%Y')} AU {dimanche_semaine.strftime('%d/%m/%Y')}"
     story.append(Paragraph(titre, title_style))
     story.append(Spacer(1, 15))
     
@@ -164,13 +166,8 @@ def generer_pdf_global(liste_missions):
     buffer.seek(0)
     return buffer
 
-employe_filtre = st.session_state.get("emp_filtre_key", "Tous les employés")
-user = st.session_state["user_connecte"]
-if user["role"] != "admin":
-    employe_filtre = user["email"]
-
-# Filtrer les missions de la semaine pour le PDF
-missions_semaine = []
+# --- FILTRAGE DE LA SEMAINE POUR LE BOUTON PDF (SELON LE RÔLE) ---
+missions_pdf = []
 for s in st.session_state["plannings"]:
     str_deb = s.get("date_debut")
     str_fin = s.get("date_fin")
@@ -179,9 +176,12 @@ for s in st.session_state["plannings"]:
     try:
         deb_s = datetime.strptime(str(str_deb), "%Y-%m-%d").date()
         fin_s = datetime.strptime(str(str_fin), "%Y-%m-%d").date()
+        
+        # Vérification des dates (dans la semaine en cours)
         if not (fin_s < lundi_semaine or deb_s > dimanche_semaine):
-            if employe_filtre == "Tous les employés" or employe_filtre in s.get("participants", []):
-                missions_semaine.append(s)
+            # Si ADMIN : Voit tout | Si EMPLOYÉ : Voit uniquement ses chantiers
+            if user["role"] == "admin" or user["email"] in s.get("participants", []):
+                missions_pdf.append(s)
     except:
         continue
 
@@ -190,12 +190,13 @@ st.sidebar.markdown(f"### Utilisateur : {user['nom']}")
 st.sidebar.markdown(f"**Rôle système :** {user['role'].upper()}")
 st.sidebar.markdown("---")
 
-# Bouton PDF réactivé si des chantiers existent cette semaine
-if missions_semaine:
+# Affichage du bouton de téléchargement adapté
+if missions_pdf:
     try:
-        pdf_data = generer_pdf_global(missions_semaine)
+        pdf_data = generer_pdf_global(missions_pdf)
+        label_bouton = "Télécharger tout le planning (PDF)" if user["role"] == "admin" else "Télécharger mon planning (PDF)"
         st.sidebar.download_button(
-            label="Télécharger le planning (PDF)",
+            label=label_bouton,
             data=pdf_data,
             file_name=f"planning_semaine_{lundi_semaine.strftime('%d_%m_%Y')}.pdf",
             mime="application/pdf",
@@ -203,6 +204,8 @@ if missions_semaine:
         )
     except Exception as e:
         st.sidebar.error("Erreur de préparation du PDF.")
+else:
+    st.sidebar.info("Aucun chantier planifié pour vous cette semaine.")
 
 if st.sidebar.button("Déconnexion", use_container_width=True):
     st.session_state["user_connecte"] = None
@@ -247,14 +250,14 @@ with onglet_actif[0]:
     with col_date:
         st.date_input("Sélection de la date", key="date_calendrier", format="DD/MM/YYYY")
     with col_filtre:
-        liste_employes_choix = ["Tous les employés"] + list(st.session_state["utilisateurs"].keys())
-        def formater_nom_filtre(x):
-            if x == "Tous les employés": return "Tous les employés"
-            return st.session_state["utilisateurs"][x]["nom"]
         if user["role"] == "admin":
-            st.selectbox("Filtrer par employé", options=liste_employes_choix, format_func=formater_nom_filtre, key="emp_filtre_key")
+            liste_employes_choix = ["Tous les employés"] + list(st.session_state["utilisateurs"].keys())
+            def formater_nom_filtre(x):
+                if x == "Tous les employés": return "Tous les employés"
+                return st.session_state["utilisateurs"][x]["nom"]
+            employe_filtre = st.selectbox("Filtrer par employé", options=liste_employes_choix, format_func=formater_nom_filtre, key="emp_filtre_key")
         else:
-            st.session_state["emp_filtre_key"] = user["email"]
+            employe_filtre = user["email"]
 
     cols = st.columns(7)
     for i, jour in enumerate(jours):
@@ -331,7 +334,7 @@ if user["role"] == "admin":
                         st.error(f"Erreur d'écriture sur Google Sheet : {e}")
 
     # ==========================================
-    # CÔTÉ ADMIN - ONGLET 3 : RAPPORTS REÇUS (CONTENU AJOUTÉ)
+    # CÔTÉ ADMIN - ONGLET 3 : RAPPORTS REÇUS
     # ==========================================
     with onglet_actif[2]:
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Rapports Chantiers Reçus</h2>", unsafe_allow_html=True)
