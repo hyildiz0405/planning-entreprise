@@ -3,3 +3,4 @@ extra-streamlit-components
 gspread
 st-gsheets-connection
 reportlab
+google-auth
