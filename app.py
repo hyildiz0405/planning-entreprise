@@ -31,6 +31,7 @@ if "utilisateurs" not in st.session_state:
     st.session_state["utilisateurs"] = UTILISATEURS
 
 # --- CONNEXION GOOGLE SHEETS EN DIRECT VIA SERVICE ACCOUNT ---
+conn = None
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
     df_plannings = conn.read(ttl=5)
@@ -43,6 +44,7 @@ try:
                 s["participants"] = [s["participants"]]
 except Exception as e:
     st.session_state["plannings"] = []
+    st.error(f"Impossible de se connecter au Google Sheet. Vérifiez la configuration des Secrets TOML. Erreur : {e}")
 
 if "rapports" not in st.session_state:
     st.session_state["rapports"] = []
@@ -296,40 +298,43 @@ with onglet_actif[0]:
 if user["role"] == "admin":
     with onglet_actif[1]:
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Planifier une Mission</h2>", unsafe_allow_html=True)
-        with st.form("form_centre_shift", clear_on_submit=True):
-            col_1, col_2 = st.columns(2)
-            with col_1:
-                equipe_sel = st.multiselect("Équipe", options=list(st.session_state["utilisateurs"].keys()), format_func=lambda x: st.session_state["utilisateurs"][x]["nom"])
-                date_debut_sel = st.date_input("Date de DÉBUT", datetime.now().date(), format="DD/MM/YYYY")
-                date_fin_sel = st.date_input("Date de FIN", datetime.now().date(), format="DD/MM/YYYY")
-            with col_2:
-                lieu_input = st.text_input("Lieu ou Nom du projet")
-                statut_selection = st.selectbox("Statut", ["Production", "Planifié", "Urgent"])
-            tache_input = st.text_area("Descriptif")
-            
-            if st.form_submit_button("Planifier", use_container_width=True):
-                if equipe_sel and lieu_input and tache_input:
-                    nouvel_id = int(time.time())
-                    
-                    nouvelle_mission = pd.DataFrame([{
-                        "id": nouvel_id,
-                        "participants": json.dumps(equipe_sel),
-                        "date_debut": str(date_debut_sel),
-                        "date_fin": str(date_fin_sel),
-                        "lieu": lieu_input.upper(),
-                        "tache": tache_input,
-                        "statut": statut_selection
-                    }])
-                    
-                    try:
-                        df_existant = conn.read(ttl=0)
-                        df_total = pd.concat([df_existant, nouvelle_mission], ignore_index=True)
-                        conn.update(data=df_total)
-                        st.toast("Mission enregistrée à vie sur Google Sheet !")
-                        time.sleep(1)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erreur d'écriture sur Google Sheet : {e}")
+        if conn is None:
+            st.error("La planification est désactivée car l'application n'a pas pu s'authentifier auprès de Google Sheets. Vérifiez vos secrets TOML.")
+        else:
+            with st.form("form_centre_shift", clear_on_submit=True):
+                col_1, col_2 = st.columns(2)
+                with col_1:
+                    equipe_sel = st.multiselect("Équipe", options=list(st.session_state["utilisateurs"].keys()), format_func=lambda x: st.session_state["utilisateurs"][x]["nom"])
+                    date_debut_sel = st.date_input("Date de DÉBUT", datetime.now().date(), format="DD/MM/YYYY")
+                    date_fin_sel = st.date_input("Date de FIN", datetime.now().date(), format="DD/MM/YYYY")
+                with col_2:
+                    lieu_input = st.text_input("Lieu ou Nom du projet")
+                    statut_selection = st.selectbox("Statut", ["Production", "Planifié", "Urgent"])
+                tache_input = st.text_area("Descriptif")
+                
+                if st.form_submit_button("Planifier", use_container_width=True):
+                    if equipe_sel and lieu_input and tache_input:
+                        nouvel_id = int(time.time())
+                        
+                        nouvelle_mission = pd.DataFrame([{
+                            "id": nouvel_id,
+                            "participants": json.dumps(equipe_sel),
+                            "date_debut": str(date_debut_sel),
+                            "date_fin": str(date_fin_sel),
+                            "lieu": lieu_input.upper(),
+                            "tache": tache_input,
+                            "statut": statut_selection
+                        }])
+                        
+                        try:
+                            df_existant = conn.read(ttl=0)
+                            df_total = pd.concat([df_existant, nouvelle_mission], ignore_index=True)
+                            conn.update(data=df_total)
+                            st.toast("Mission enregistrée à vie sur Google Sheet !")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erreur d'écriture sur Google Sheet : {e}")
 
     # ==========================================
     # CÔTÉ ADMIN - ONGLET 3 : RAPPORTS REÇUS
