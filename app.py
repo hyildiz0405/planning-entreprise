@@ -13,11 +13,17 @@ from email.mime.multipart import MIMEMultipart
 import gspread
 from google.oauth2.service_account import Credentials
 
+# Importations pour la génération du PDF
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+
 # --- CONFIGURATION INITIALE DE L'APPLICATION ---
 st.set_page_config(page_title="Planning Entreprise", page_icon="logo.png", layout="wide")
 
 # --- CONNEXION À GOOGLE SHEETS VIA SECRETS ---
-NOM_DU_SHEET = "Planning Arhen Data"  # /!\ Modifiez si votre fichier Google Sheet a un autre nom exact
+NOM_DU_SHEET = "Planning Arhen Data"  
 
 @st.cache_resource
 def initialiser_gspread():
@@ -26,7 +32,6 @@ def initialiser_gspread():
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive"
         ]
-        # Lecture sécurisée depuis l'onglet "Secrets" de Streamlit Cloud
         creds_dict = st.secrets["gcp_service_account"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
@@ -36,6 +41,34 @@ def initialiser_gspread():
         return None
 
 sh = initialiser_gspread()
+
+# --- FONCTION POUR GÉNÉRER LE PDF ---
+def generer_pdf_rapport(rapport):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
+    story = []
+    styles = getSampleStyleSheet()
+    
+    # Styles personnalisés
+    style_titre = ParagraphStyle('Titre', parent=styles['Heading1'], fontSize=18, textColor=colors.HexColor("#0284C7"), spaceAfter=15)
+    style_label = ParagraphStyle('Label', parent=styles['Normal'], fontSize=11, fontName="Helvetica-Bold", spaceAfter=5)
+    style_texte = ParagraphStyle('Texte', parent=styles['Normal'], fontSize=11, leading=14, spaceAfter=15)
+    
+    story.append(Paragraph(f"RAPPORT D'ACTIVITÉ - {rapport.get('projet', '')}", style_titre))
+    story.append(Spacer(1, 10))
+    
+    story.append(Paragraph("Employé :", style_label))
+    story.append(Paragraph(rapport.get('employe', 'Inconnu'), style_texte))
+    
+    story.append(Paragraph("Date de soumission :", style_label))
+    story.append(Paragraph(rapport.get('date', ''), style_texte))
+    
+    story.append(Paragraph("Détails du travail accompli :", style_label))
+    story.append(Paragraph(rapport.get('contenu', '').replace('\n', '<br/>'), style_texte))
+    
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
 
 # --- FONCTIONS DE SAUVEGARDE ET CHARGEMENT VIA GOOGLE SHEETS ---
 def charger_utilisateurs_sheets():
@@ -118,7 +151,7 @@ def sauvegarder_rapport_sheets(rapport):
 # --- VALEURS PAR DÉFAUT (SI LE TABLEUR EST VIDE) ---
 UTILISATEURS_PAR_DEFAUT = {
     "admin@entreprise.com": {"nom": "Admin", "role": "admin", "mdp": "admin123", "tel": "", "email_contact": "admin@entreprise.com"},    
-    "sb@arhen.energy": {"nom": "Samir BOUABDELLAH", "role": "admin", "mdp": "hml73200!", "tel": "", "email_contact": "sb@arhen.energy"},
+    "sb@arhen.energy": {"nom": "Samir BOUABDELLAH", "role": "admin", "mdp": "hml73200!", "tel": "0601020304", "email_contact": "sb@arhen.energy"},
     "hasan.gozel@arhen.energy": {"nom": "Hasan GOZEL", "role": "admin", "mdp": "hml73200!", "tel": "", "email_contact": "hasan.gozel@arhen.energy"},
     "loic.arribert@arhen.energy": {"nom": "Loïc ARRIBERT", "role": "admin", "mdp": "hml73200!", "tel": "", "email_contact": "loic.arribert@arhen.energy"},
     "mc@arhen.energy": {"nom": "Marcia DE CASTRO", "role": "admin", "mdp": "hml73200!", "tel": "", "email_contact": "mc@arhen.energy"},
@@ -394,15 +427,30 @@ if user["role"] == "admin":
                     st.rerun()
 
     # ==========================================
-    # CÔTÉ ADMIN - ONGLET 3 : RAPPORTS REÇUS
+    # CÔTÉ ADMIN - ONGLET 3 : RAPPORTS REÇUS (AVEC BOUTON PDF)
     # ==========================================
     with onglet_actif[2]:
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Rapports Chantiers Reçus</h2>", unsafe_allow_html=True)
         if st.session_state["rapports"]:
-            for r in st.session_state["rapports"]:
-                with st.expander(f"Rapport de {r.get('employe', 'Inconnu')} — {r.get('date', '')} ({r.get('projet', '')})"):
+            for idx, r in enumerate(st.session_state["rapports"]):
+                nom_expander = f"Rapport de {r.get('employe', 'Inconnu')} — {r.get('date', '')} ({r.get('projet', '')})"
+                with st.expander(nom_expander):
                     st.write(f"**Lieu/Projet :** {r.get('projet', '')}")
-                    st.write(f"**Description du travail :** {r.get('contenu', '')}")
+                    st.write(f"**Description du travail :**")
+                    st.info(r.get('contenu', ''))
+                    
+                    # Génération du fichier PDF en mémoire
+                    pdf_data = generer_pdf_rapport(r)
+                    nom_fichier_pdf = f"Rapport_{r.get('projet', 'chantier')}_{r.get('date', '').split(' ')[0].replace('/', '-')}.pdf"
+                    
+                    # Bouton de téléchargement du PDF remis en place
+                    st.download_button(
+                        label="📥 Télécharger le rapport en PDF",
+                        data=pdf_data,
+                        file_name=nom_fichier_pdf,
+                        mime="application/pdf",
+                        key=f"btn_pdf_{idx}"
+                    )
         else:
             st.info("Aucun rapport d'activité n'a été soumis pour le moment.")
 
@@ -437,7 +485,7 @@ else:
             rapport_texte = st.text_area("Détails de l'avancement et remarques")
             
             if st.form_submit_button("Envoyer le rapport", use_container_width=True):
-                if projet_nom and report_texte:
+                if projet_nom and rapport_texte:
                     nouveau_rapport = {
                         "employe": user["nom"],
                         "date": datetime.now().strftime("%d/%m/%Y à %H:%M"),
