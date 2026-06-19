@@ -45,12 +45,10 @@ sh = initialiser_gspread()
 # --- FONCTION POUR GÉNÉRER LE PDF DU PLANNING SEMAINE ---
 def generer_pdf_planning(jours, plannings, utilisateurs, employe_filtre):
     buffer = BytesIO()
-    # Format Paysage (landscape) pour avoir la place de mettre les jours côte à côte
     doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     story = []
     styles = getSampleStyleSheet()
     
-    # Titre du PDF
     titre_texte = f"PLANNING DE LA SEMAINE — Du {jours[0]['date_texte']} au {jours[-1]['date_texte']}"
     if employe_filtre != "Tous les employés" and employe_filtre in utilisateurs:
         titre_texte += f" ({utilisateurs[employe_filtre]['nom']})"
@@ -59,11 +57,9 @@ def generer_pdf_planning(jours, plannings, utilisateurs, employe_filtre):
     story.append(Paragraph(titre_texte, style_titre))
     story.append(Spacer(1, 10))
     
-    # Construction des colonnes du tableau
     headers = [f"{j['nom']}\n({j['date_texte']})" for j in jours]
     donnees_tableau = [headers]
     
-    # Ligne des chantiers
     ligne_chantiers = []
     for jour in jours:
         current_date = datetime.strptime(jour["date_str"], "%Y-%m-%d").date()
@@ -92,8 +88,7 @@ def generer_pdf_planning(jours, plannings, utilisateurs, employe_filtre):
         
     donnees_tableau.append(ligne_chantiers)
     
-    # Style du tableau ReportLab
-    largeur_colonne = 100 # Largeur auto répartie
+    largeur_colonne = 100
     t = Table(donnees_tableau, colWidths=[largeur_colonne]*7)
     t.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0284C7")),
@@ -263,14 +258,41 @@ lundi_semaine = date_active - timedelta(days=date_active.weekday())
 noms_jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
 jours = [{"nom": noms_jours[i], "date_texte": (lundi_semaine + timedelta(days=i)).strftime('%d/%m'), "date_str": str(lundi_semaine + timedelta(days=i))} for i in range(7)]
 
+# ==========================================
+# CONFIGURATION DE LA BARRE LATÉRALE À GAUCHE (SIDEBAR)
+# ==========================================
 st.sidebar.markdown(f"### Utilisateur : {user['nom']}")
 st.sidebar.markdown(f"**Rôle :** {user['role'].upper()}")
+st.sidebar.markdown("---")
+
+# Filtre de l'employé pour le PDF (Doit être défini avant de générer le bouton)
+if user["role"] == "admin":
+    if "sidebar_emp_filtre" not in st.session_state:
+        st.session_state["sidebar_emp_filtre"] = "Tous les employés"
+    liste_employes_choix = ["Tous les employés"] + list(st.session_state["utilisateurs"].keys())
+    employe_filtre = st.sidebar.selectbox("Filtre pour le PDF :", options=liste_employes_choix, format_func=lambda x: "Tous les employés" if x == "Tous les employés" else st.session_state["utilisateurs"][x]["nom"], key="sidebar_emp_filtre")
+else:
+    employe_filtre = user_key
+
+st.sidebar.markdown("### Téléchargement")
+# Génération dynamique du PDF du planning complet de la semaine
+pdf_planning_data = generer_pdf_planning(jours, st.session_state["plannings"], st.session_state["utilisateurs"], employe_filtre)
+st.sidebar.download_button(
+    label="📅 Télécharger le Planning (PDF)",
+    data=pdf_planning_data,
+    file_name=f"Planning_Semaine_{jours[0]['date_texte'].replace('/', '-')}.pdf",
+    mime="application/pdf",
+    use_container_width=True
+)
+
+st.sidebar.markdown("---")
 if st.sidebar.button("Déconnexion", use_container_width=True):
     st.session_state["user_connecte"] = None
     try: cookie_manager.delete("user_session")
     except Exception: pass
     st.rerun()
 
+# --- STYLES CSS ---
 st.markdown("""
     <style>
     .header-jour { text-align: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid var(--text-color); }
@@ -287,31 +309,20 @@ if user["role"] == "admin": onglet_actif = st.tabs(["Calendrier", "Planifier", "
 else: onglet_actif = st.tabs(["Calendrier", "Envoyer un Rapport"])
 
 # ==========================================
-# ONGLET 1 : CALENDRIER (AVEC BOUTON TÉLÉCHARGER LE PLANNING)
+# ONGLET 1 : CALENDRIER
 # ==========================================
 with onglet_actif[0]:
     st.markdown("<h2 style='margin: 0 0 15px 0;'>Calendrier de la semaine</h2>", unsafe_allow_html=True)
     
-    col_date, col_filtre, col_pdf_planning = st.columns([2, 2, 2])
+    col_date, col_filtre_affichage = st.columns([3, 3])
     with col_date:
         st.date_input("Sélection de la date", key="date_calendrier", format="DD/MM/YYYY")
-    with col_filtre:
+    with col_filtre_affichage:
         if user["role"] == "admin":
-            liste_employes_choix = ["Tous les employés"] + list(st.session_state["utilisateurs"].keys())
-            employe_filtre = st.selectbox("Filtrer par employé", options=liste_employes_choix, format_func=lambda x: "Tous les employés" if x == "Tous les employés" else st.session_state["utilisateurs"][x]["nom"])
-        else: employe_filtre = user_key
-        
-    with col_pdf_planning:
-        st.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
-        # Génération dynamique du PDF du planning complet de la semaine
-        pdf_planning_data = generer_pdf_planning(jours, st.session_state["plannings"], st.session_state["utilisateurs"], employe_filtre)
-        st.download_button(
-            label="📅 Télécharger le Planning (PDF)",
-            data=pdf_planning_data,
-            file_name=f"Planning_Semaine_{jours[0]['date_texte'].replace('/', '-')}.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
+            # Le filtre d'affichage écran se synchronise ou s'ajuste indépendamment
+            liste_affichage = ["Tous les employés"] + list(st.session_state["utilisateurs"].keys())
+            employe_affichage = st.selectbox("Filtrer l'affichage écran :", options=liste_affichage, format_func=lambda x: "Tous les employés" if x == "Tous les employés" else st.session_state["utilisateurs"][x]["nom"], key="screen_emp_filtre")
+        else: employe_affichage = user_key
 
     # Affichage grille du calendrier
     cols = st.columns(7)
@@ -324,7 +335,7 @@ with onglet_actif[0]:
                 if not s.get("date_debut"): continue
                 try:
                     if datetime.strptime(str(s["date_debut"]), "%Y-%m-%d").date() <= current_date <= datetime.strptime(str(s["date_fin"]), "%Y-%m-%d").date():
-                        if employe_filtre == "Tous les employés" or employe_filtre in s.get("participants", []): shifts_du_jour.append(s)
+                        if employe_affichage == "Tous les employés" or employe_affichage in s.get("participants", []): shifts_du_jour.append(s)
                 except: continue
             
             if shifts_du_jour:
