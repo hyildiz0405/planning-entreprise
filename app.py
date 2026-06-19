@@ -82,7 +82,7 @@ if st.session_state["user_connecte"] is None:
         if type_connexion == "Email":
             identifiant_saisi = st.text_input("Adresse Email", key="login_email").strip().lower()
         else:
-            identifiant_saisi = st.text_input("Numéro de téléphone (ex: 0612345678)", key="login_tel").strip()
+            identifiant_saisi = st.text_input("Numéro de téléphone", key="login_tel").strip()
             
         mdp_saisi = st.text_input("Mot de passe", type="password", key="login_mdp")
         
