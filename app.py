@@ -36,6 +36,14 @@ ID_SHEET = "1nIiT1ql3mL4VmcBuLlST8QD0QKItAHq72B9P0THH-ns"
 # --- CONNEXION GOOGLE SHEETS EN DIRECT VIA SERVICE ACCOUNT ---
 conn = None
 try:
+    # SÉCURITÉ COMPTE DE SERVICE : Nettoyage automatique de la clé privée TOML
+    if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+        if "private_key" in st.secrets["connections"]["gsheets"]:
+            raw_key = st.secrets["connections"]["gsheets"]["private_key"]
+            # Convertit les \n textuels si présents, sinon conserve les retours à la ligne natifs
+            if "\\n" in raw_key:
+                st.secrets["connections"]["gsheets"]["private_key"] = raw_key.replace("\\n", "\n")
+
     conn = st.connection("gsheets", type=GSheetsConnection)
     df_plannings = conn.read(spreadsheet=ID_SHEET, ttl=5)
     st.session_state["plannings"] = df_plannings.to_dict(orient="records")
