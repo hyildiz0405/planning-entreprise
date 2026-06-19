@@ -22,19 +22,9 @@ def charger_donnees():
             "hasan.gozel@arhen.energy": {"nom": "Hasan GOZEL", "role": "admin", "mdp": "hml73200!"},
             "mc@arhen.energy": {"nom": "Marcia DE CASTRO", "role": "admin", "mdp": "hml73200!"},
             "loic.arribert@arhen.energy": {"nom": "Loïc ARRIBERT", "role": "admin", "mdp": "hml73200!"},
-            "hy@arhen.energy": {"nom": "Test", "role": "admin", "mdp": "hml73200!"}
+            "hy@arhen.energy": {"nom": "Hümeyra YILDIZ", "role": "admin", "mdp": "hml73200!"}
         },
-        "plannings": [
-            {
-                "id": 1,
-                "participants": ["admin@entreprise.com"],
-                "date_debut": "2026-06-16", 
-                "date_fin": "2026-06-17",
-                "lieu": "TEST",
-                "tache": "test de l'application faite",
-                "statut": "Production"
-            }
-        ],
+        "plannings": [],
         "rapports": []
     }
     
@@ -74,8 +64,9 @@ if "plannings" not in st.session_state:
 if "rapports" not in st.session_state:
     st.session_state["rapports"] = donnees_chargees["rapports"]
 
+# Initialisation du calendrier sur la date du jour réelle
 if "date_calendrier" not in st.session_state:
-    st.session_state["date_calendrier"] = datetime(2026, 6, 15).date()
+    st.session_state["date_calendrier"] = datetime.now().date()
 
 # --- GESTIONNAIRE DE COOKIES ---
 cookie_manager = stx.CookieManager()
@@ -240,14 +231,13 @@ if st.sidebar.button("Déconnexion", use_container_width=True):
     except Exception: pass
     st.rerun()
 
-# --- CSS STYLES ADAPTATIFS (MODE CLAIR / MODE SOMBRE) ---
+# --- CSS STYLES ---
 st.markdown("""
     <style>
     .header-jour { text-align: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid var(--text-color); }
     .nom-jour { margin: 0; font-size: 11px; opacity: 0.6; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
     .num-jour { margin: 4px 0 0 0; font-size: 22px; font-weight: 800; }
     
-    /* Utilisation des variables d'environnement Streamlit pour s'adapter au thème clair/sombre */
     .shift-card-container { 
         border-radius: 8px; 
         background-color: var(--background-color);
@@ -266,7 +256,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- DEFINITION DES ONGLETS SELON LE ROLE ---
+# --- DEFINITION DES ONGLETS ---
 if user["role"] == "admin":
     onglet_actif = st.tabs(["Calendrier", "Planifier", "Rapports Reçus", "Liste des Comptes"])
 else:
