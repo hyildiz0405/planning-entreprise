@@ -13,7 +13,7 @@ st.set_page_config(page_title="Planning Entreprise", page_icon="logo.png", layou
 # --- COMPTES UTILISATEURS (Acceptent Email ou Téléphone comme identifiant) ---
 UTILISATEURS = {
     "admin@entreprise.com": {"nom": "Admin", "role": "admin", "mdp": "admin123", "tel": ""},    
-    "sb@arhen.energy": {"nom": "Samir BOUABDELLAH", "role": "admin", "mdp": "hml73200!", "tel": "0601020304"},
+    "sb@arhen.energy": {"nom": "Samir BOUABDELLAH", "role": "admin", "mdp": "hml73200!", "tel": ""},
     "hasan.gozel@arhen.energy": {"nom": "Hasan GOZEL", "role": "admin", "mdp": "hml73200!", "tel": ""},
     "loic.arribert@arhen.energy": {"nom": "Loïc ARRIBERT", "role": "admin", "mdp": "hml73200!", "tel": ""},
     "mc@arhen.energy": {"nom": "Marcia DE CASTRO", "role": "admin", "mdp": "hml73200!", "tel": ""},
