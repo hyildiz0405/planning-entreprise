@@ -7,23 +7,17 @@ import time
 import pandas as pd
 from io import BytesIO
 
-# Éléments requis pour le PDF
-from reportlab.lib.pagesizes import letter, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
-
 # --- CONFIGURATION INITIALE DE L'APPLICATION ---
 st.set_page_config(page_title="Planning Entreprise", page_icon="logo.png", layout="wide")
 
-# --- COMPTES UTILISATEURS ---
+# --- COMPTES UTILISATEURS (Acceptent Email ou Téléphone comme identifiant) ---
 UTILISATEURS = {
-    "admin@entreprise.com": {"nom": "Admin", "role": "admin", "mdp": "admin123"},    
-    "sb@arhen.energy": {"nom": "Samir BOUABDELLAH", "role": "admin", "mdp": "hml73200!"},
-    "hasan.gozel@arhen.energy": {"nom": "Hasan GOZEL", "role": "admin", "mdp": "hml73200!"},
-    "loic.arribert@arhen.energy": {"nom": "Loïc ARRIBERT", "role": "admin", "mdp": "hml73200!"},
-    "mc@arhen.energy": {"nom": "Marcia DE CASTRO", "role": "admin", "mdp": "hml73200!"},
-    "hy@arhen.energy": {"nom": "Hümeyra YILDIZ", "role": "admin", "mdp": "test123"}
+    "admin@entreprise.com": {"nom": "Admin", "role": "admin", "mdp": "admin123", "tel": ""},    
+    "sb@arhen.energy": {"nom": "Samir BOUABDELLAH", "role": "admin", "mdp": "hml73200!", "tel": "0601020304"},
+    "hasan.gozel@arhen.energy": {"nom": "Hasan GOZEL", "role": "admin", "mdp": "hml73200!", "tel": ""},
+    "loic.arribert@arhen.energy": {"nom": "Loïc ARRIBERT", "role": "admin", "mdp": "hml73200!", "tel": ""},
+    "mc@arhen.energy": {"nom": "Marcia DE CASTRO", "role": "admin", "mdp": "hml73200!", "tel": ""},
+    "hy@arhen.energy": {"nom": "Hümeyra YILDIZ", "role": "admin", "mdp": "test123", "tel": ""}
 }
 
 if "utilisateurs" not in st.session_state:
@@ -34,7 +28,7 @@ if "plannings" not in st.session_state:
     st.session_state["plannings"] = [
         {
             "id": 1,
-            "participants": ["sb@arhen.energy", "loic.arribert@arhen.energy"],
+            "participants": ["sb@arhen.energy"],
             "date_debut": str(datetime.now().date()),
             "date_fin": str(datetime.now().date() + timedelta(days=2)),
             "lieu": "CHANTIER PARIS",
@@ -72,23 +66,94 @@ if saved_user is None and "cookie_init" not in st.session_state:
 
 if "user_connecte" not in st.session_state:
     if saved_user and saved_user in st.session_state["utilisateurs"]:
-        st.session_state["user_connecte"] = {**st.session_state["utilisateurs"][saved_user], "email": saved_user}
+        st.session_state["user_connecte"] = {**st.session_state["utilisateurs"][saved_user], "identifiant": saved_user}
     else:
         st.session_state["user_connecte"] = None
 
+# --- ÉCRAN D'ACCUEIL : CONNEXION & INSCRIPTION ---
 if st.session_state["user_connecte"] is None:
-    st.subheader("Connexion")
-    email_saisi = st.text_input("Adresse Email")
-    mdp_saisi = st.text_input("Mot de passe", type="password")
+    onglet_auth = st.tabs(["Connexion", "Créer un compte"])
     
-    if st.button("Se connecter", use_container_width=True):
-        if email_saisi in st.session_state["utilisateurs"] and st.session_state["utilisateurs"][email_saisi]["mdp"] == mdp_saisi:
-            st.session_state["user_connecte"] = {**st.session_state["utilisateurs"][email_saisi], "email": email_saisi}
-            cookie_manager.set("user_session", email_saisi, max_age=2592000)
-            st.rerun()
+    # --- FORMULAIRE DE CONNEXION ---
+    with onglet_auth[0]:
+        st.subheader("Connexion")
+        type_connexion = st.radio("Se connecter avec :", ["Email", "Numéro de téléphone"], horizontal=True, key="type_conn")
+        
+        if type_connexion == "Email":
+            identifiant_saisi = st.text_input("Adresse Email", key="login_email").strip().lower()
         else:
-            st.error("Identifiants incorrects.")
+            identifiant_saisi = st.text_input("Numéro de téléphone (ex: 0612345678)", key="login_tel").strip()
+            
+        mdp_saisi = st.text_input("Mot de passe", type="password", key="login_mdp")
+        
+        if st.button("Se connecter", use_container_width=True):
+            user_trouve = None
+            cle_user = None
+            
+            # Recherche de l'utilisateur dans la base
+            for key, infos in st.session_state["utilisateurs"].items():
+                if type_connexion == "Email" and key == identifiant_saisi:
+                    user_trouve = infos
+                    cle_user = key
+                    break
+                elif type_connexion == "Numéro de téléphone" and infos.get("tel") == identifiant_saisi:
+                    user_trouve = infos
+                    cle_user = key
+                    break
+            
+            if user_trouve and user_trouve["mdp"] == mdp_saisi:
+                st.session_state["user_connecte"] = {**user_trouve, "identifiant": cle_user}
+                cookie_manager.set("user_session", cle_user, max_age=2592000)
+                st.success(f"Bienvenue {user_trouve['nom']} !")
+                time.sleep(0.5)
+                st.rerun()
+            else:
+                st.error("Identifiants ou mot de passe incorrects.")
+                
+    # --- FORMULAIRE DE CRÉATION DE COMPTE ---
+    with onglet_auth[1]:
+        st.subheader("Créer un nouveau compte")
+        nom_neuf = st.text_input("Nom et Prénom")
+        type_crea = st.radio("Identifiant principal :", ["Email", "Numéro de téléphone"], horizontal=True, key="type_crea")
+        
+        email_neuf = ""
+        tel_neuf = ""
+        
+        if type_crea == "Email":
+            email_neuf = st.text_input("Adresse Email (servira d'identifiant)").strip().lower()
+            tel_neuf = st.text_input("Numéro de téléphone (Optionnel)").strip()
+        else:
+            tel_neuf = st.text_input("Numéro de téléphone (servira d'identifiant)").strip()
+            email_neuf = st.text_input("Adresse Email (Optionnel)").strip().lower()
+            
+        mdp_neuf = st.text_input("Définir un mot de passe", type="password")
+        
+        if st.button("Créer mon compte", use_container_width=True):
+            if not nom_neuf or not mdp_neuf:
+                st.error("Veuillez remplir le nom et le mot de passe.")
+            elif type_crea == "Email" and not email_neuf:
+                st.error("Veuillez renseigner une adresse email valide.")
+            elif type_crea == "Numéro de téléphone" and not tel_neuf:
+                st.error("Veuillez renseigner un numéro de téléphone valide.")
+            else:
+                # L'identifiant dans le dictionnaire sera l'email si fourni, sinon le numéro de téléphone
+                cle_creation = email_neuf if email_neuf else tel_neuf
+                
+                if cle_creation in st.session_state["utilisateurs"]:
+                    st.error("Cet identifiant est déjà utilisé par un autre compte.")
+                else:
+                    st.session_state["utilisateurs"][cle_creation] = {
+                        "nom": nom_neuf,
+                        "role": "employe", # Par défaut, les nouveaux comptes sont employés
+                        "mdp": mdp_neuf,
+                        "tel": tel_neuf
+                    }
+                    st.success("Compte créé avec succès ! Vous pouvez maintenant vous connecter.")
     st.stop()
+
+# --- PARAMÈTRES UTILISATEUR CONNECTÉ ---
+user = st.session_state["user_connecte"]
+user_key = user["identifiant"]
 
 # --- CONFIGURATION DES DATES ---
 date_active = st.session_state["date_calendrier"]
@@ -101,105 +166,10 @@ for i in range(7):
     j = lundi_semaine + timedelta(days=i)
     jours.append({"nom": noms_jours[i], "date_texte": j.strftime('%d/%m'), "date_str": str(j)})
 
-user = st.session_state["user_connecte"]
-
-# --- FONCTION DE GÉNÉRATION DU PDF ---
-def generer_pdf_global(liste_missions):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=15, leftMargin=15, topMargin=20, bottomMargin=20)
-    story = []
-    styles = getSampleStyleSheet()
-    
-    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, leading=20, textColor=colors.HexColor("#0F172A"), alignment=0)
-    header_style = ParagraphStyle('HeaderTable', fontName="Helvetica-Bold", fontSize=9, leading=11, textColor=colors.white, alignment=1)
-    cell_style = ParagraphStyle('CellTable', fontName="Helvetica", fontSize=8, leading=11, textColor=colors.HexColor("#1E293B"))
-    cell_bold = ParagraphStyle('CellBold', fontName="Helvetica-Bold", fontSize=8, leading=11, textColor=colors.HexColor("#0F172A"))
-    
-    titre = f"RAPPORT DE PLANNING — SEMAINE DU {lundi_semaine.strftime('%d/%m/%Y')} AU {dimanche_semaine.strftime('%d/%m/%Y')}"
-    story.append(Paragraph(titre, title_style))
-    story.append(Spacer(1, 15))
-    
-    headers = [
-        Paragraph("<b>Lieu</b>", header_style),
-        Paragraph("<b>Objet / Mission</b>", header_style),
-        Paragraph("<b>Début</b>", header_style),
-        Paragraph("<b>Fin</b>", header_style),
-        Paragraph("<b>Participants</b>", header_style),
-        Paragraph("<b>Statut</b>", header_style)
-    ]
-    
-    table_data = [headers]
-    
-    for s in liste_missions:
-        noms_equipe = ", ".join([st.session_state["utilisateurs"][emp]["nom"] for emp in s.get("participants", []) if emp in st.session_state["utilisateurs"]])
-        tache_propre = str(s['tache']).replace('\n', '<br/>')
-        
-        str_deb = s.get("date_debut")
-        str_fin = s.get("date_fin")
-        
-        d_deb = datetime.strptime(str(str_deb), "%Y-%m-%d").strftime("%d/%m/%Y") if str_deb else "—"
-        d_fin = datetime.strptime(str(str_fin), "%Y-%m-%d").strftime("%d/%m/%Y") if str_fin else "—"
-        
-        table_data.append([
-            Paragraph(str(s['lieu']), cell_bold),
-            Paragraph(tache_propre, cell_style),
-            Paragraph(d_deb, cell_style),
-            Paragraph(d_fin, cell_style),
-            Paragraph(noms_equipe, cell_style),
-            Paragraph(str(s.get('statut', 'Planifié')), cell_bold)
-        ])
-        
-    t = Table(table_data, colWidths=[110, 292, 80, 80, 140, 80])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0F172A")),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
-        ('TOPPADDING', (0,0), (-1,-1), 6),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-    ]))
-    story.append(t)
-    doc.build(story)
-    buffer.seek(0)
-    return buffer
-
-# --- FILTRAGE DE LA SEMAINE POUR LE BOUTON PDF (SELON LE RÔLE) ---
-missions_pdf = []
-for s in st.session_state["plannings"]:
-    str_deb = s.get("date_debut")
-    str_fin = s.get("date_fin")
-    if not str_deb or not str_fin:
-        continue
-    try:
-        deb_s = datetime.strptime(str(str_deb), "%Y-%m-%d").date()
-        fin_s = datetime.strptime(str(str_fin), "%Y-%m-%d").date()
-        
-        if not (fin_s < lundi_semaine or deb_s > dimanche_semaine):
-            if user["role"] == "admin" or user["email"] in s.get("participants", []):
-                missions_pdf.append(s)
-    except:
-        continue
-
 # --- BARRE LATÉRALE ---
 st.sidebar.markdown(f"### Utilisateur : {user['nom']}")
 st.sidebar.markdown(f"**Rôle système :** {user['role'].upper()}")
 st.sidebar.markdown("---")
-
-if missions_pdf:
-    try:
-        pdf_data = generer_pdf_global(missions_pdf)
-        label_bouton = "Télécharger tout le planning (PDF)" if user["role"] == "admin" else "Télécharger mon planning (PDF)"
-        st.sidebar.download_button(
-            label=label_bouton,
-            data=pdf_data,
-            file_name=f"planning_semaine_{lundi_semaine.strftime('%d_%m_%Y')}.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
-    except Exception as e:
-        st.sidebar.error("Erreur de préparation du PDF.")
-else:
-    st.sidebar.info("Aucun chantier planifié pour vous cette semaine.")
 
 if st.sidebar.button("Déconnexion", use_container_width=True):
     st.session_state["user_connecte"] = None
@@ -251,7 +221,7 @@ with onglet_actif[0]:
                 return st.session_state["utilisateurs"][x]["nom"]
             employe_filtre = st.selectbox("Filtrer par employé", options=liste_employes_choix, format_func=formater_nom_filtre, key="emp_filtre_key")
         else:
-            employe_filtre = user["email"]
+            employe_filtre = user_key
 
     cols = st.columns(7)
     for i, jour in enumerate(jours):
@@ -306,7 +276,6 @@ if user["role"] == "admin":
             if st.form_submit_button("Planifier", use_container_width=True):
                 if equipe_sel and lieu_input and tache_input:
                     nouvel_id = int(time.time())
-                    
                     st.session_state["plannings"].append({
                         "id": nouvel_id,
                         "participants": equipe_sel,
@@ -338,13 +307,13 @@ if user["role"] == "admin":
     # ==========================================
     with onglet_actif[3]:
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Gestion des Comptes Utilisateurs</h2>", unsafe_allow_html=True)
-        st.markdown("Voici la liste complète des comptes configurés dans l'application avec leurs accès.")
         
         liste_comptes = []
-        for email, infos in st.session_state["utilisateurs"].items():
+        for identifiant, infos in st.session_state["utilisateurs"].items():
             liste_comptes.append({
                 "Nom complet": infos["nom"],
-                "Adresse Email": email,
+                "Identifiant Principal": identifiant,
+                "Téléphone": infos.get("tel", "Non renseigné"),
                 "Rôle": infos["role"].upper(),
                 "Mot de passe": infos["mdp"]
             })
