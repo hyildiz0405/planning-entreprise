@@ -2,7 +2,6 @@ import streamlit as st
 from datetime import datetime, timedelta
 import calendar
 import extra_streamlit_components as stx
-from io import BytesIO
 import json
 import time
 from streamlit_gsheets import GSheetsConnection
@@ -11,7 +10,7 @@ import pandas as pd
 # --- CONFIGURATION INITIALE DE L'APPLICATION ---
 st.set_page_config(page_title="Planning Entreprise", page_icon="logo.png", layout="wide")
 
-# --- COMPTES UTILISATEURS FIXES (PLUS DE CONFLIT JSON) ---
+# --- COMPTES UTILISATEURS FIXES ---
 UTILISATEURS = {
     "admin@entreprise.com": {"nom": "Admin", "role": "admin", "mdp": "admin123"},    
     "employe@entreprise.com": {"nom": "Employé", "role": "employe", "mdp": "123"},
@@ -31,9 +30,7 @@ URL_SHEET = "https://docs.google.com/spreadsheets/d/1nIiT1ql3mL4VmcBuLlST8QD0QKI
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
     df_plannings = conn.read(spreadsheet=URL_SHEET, ttl=5)
-    # Convertir le DataFrame en liste de dictionnaires pour le calendrier
     st.session_state["plannings"] = df_plannings.to_dict(orient="records")
-    # Adapter le format des participants stockés sous forme de texte (ex: "['mail1', 'mail2']")
     for s in st.session_state["plannings"]:
         if isinstance(s.get("participants"), str):
             try:
@@ -95,113 +92,21 @@ date_active = st.session_state["date_calendrier"]
 lundi_semaine = date_active - timedelta(days=date_active.weekday())
 dimanche_semaine = lundi_semaine + timedelta(days=6)
 
-from reportlab.lib.pagesizes import letter, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
-
 noms_jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
 jours = []
 for i in range(7):
     j = lundi_semaine + timedelta(days=i)
     jours.append({"nom": noms_jours[i], "date_texte": j.strftime('%d/%m'), "date_str": str(j)})
 
-# --- GÉNÉRATION DU PDF ---
-def generer_pdf_global(liste_missions):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=15, leftMargin=15, topMargin=20, bottomMargin=20)
-    story = []
-    styles = getSampleStyleSheet()
-    
-    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, leading=20, textColor=colors.HexColor("#0F172A"), alignment=0)
-    header_style = ParagraphStyle('HeaderTable', fontName="Helvetica-Bold", fontSize=9, leading=11, textColor=colors.white, alignment=1)
-    cell_style = ParagraphStyle('CellTable', fontName="Helvetica", fontSize=8, leading=11, textColor=colors.HexColor("#1E293B"))
-    cell_bold = ParagraphStyle('CellBold', fontName="Helvetica-Bold", fontSize=8, leading=11, textColor=colors.HexColor("#0F172A"))
-    
-    titre = f"RAPPORT DE PLANNING GENERAL — SEMAINE DU {lundi_semaine.strftime('%d/%m/%Y')} AU {dimanche_semaine.strftime('%d/%m/%Y')}"
-    story.append(Paragraph(titre, title_style))
-    story.append(Spacer(1, 15))
-    
-    headers = [
-        Paragraph("<b>Lieu</b>", header_style),
-        Paragraph("<b>Objet / Mission</b>", header_style),
-        Paragraph("<b>Début</b>", header_style),
-        Paragraph("<b>Fin</b>", header_style),
-        Paragraph("<b>Participants</b>", header_style),
-        Paragraph("<b>Statut</b>", header_style)
-    ]
-    
-    table_data = [headers]
-    
-    for s in liste_missions:
-        noms_equipe = ", ".join([st.session_state["utilisateurs"][emp]["nom"] for emp in s.get("participants", []) if emp in st.session_state["utilisateurs"]])
-        tache_propre = str(s['tache']).replace('\n', '<br/>')
-        
-        str_deb = s.get("date_debut", s.get("date", ""))
-        str_fin = s.get("date_fin", s.get("date", ""))
-        
-        d_deb = datetime.strptime(str(str_deb), "%Y-%m-%d").strftime("%d/%m/%Y") if str_deb else "—"
-        d_fin = datetime.strptime(str(str_fin), "%Y-%m-%d").strftime("%d/%m/%Y") if str_fin else "—"
-        
-        table_data.append([
-            Paragraph(str(s['lieu']), cell_bold),
-            Paragraph(tache_propre, cell_style),
-            Paragraph(d_deb, cell_style),
-            Paragraph(d_fin, cell_style),
-            Paragraph(noms_equipe, cell_style),
-            Paragraph(str(s.get('statut', 'Planifié')), cell_bold)
-        ])
-        
-    t = Table(table_data, colWidths=[110, 292, 80, 80, 140, 80])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0F172A")),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
-        ('TOPPADDING', (0,0), (-1,-1), 6),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-    ]))
-    story.append(t)
-    doc.build(story)
-    buffer.seek(0)
-    return buffer
-
 employe_filtre = st.session_state.get("emp_filtre_key", "Tous les employés")
 user = st.session_state["user_connecte"]
 if user["role"] != "admin":
     employe_filtre = user["email"]
 
-missions_semaine = []
-for s in st.session_state["plannings"]:
-    str_deb = s.get("date_debut")
-    str_fin = s.get("date_fin")
-    if not str_deb or not str_fin or pd.isna(str_deb):
-        continue
-    deb_s = datetime.strptime(str(str_deb), "%Y-%m-%d").date()
-    fin_s = datetime.strptime(str(str_fin), "%Y-%m-%d").date()
-    
-    if not (fin_s < lundi_semaine or deb_s > dimanche_semaine):
-        if employe_filtre != "Tous les employés" and employe_filtre not in s.get("participants", []):
-            continue
-        missions_semaine.append(s)
-
 # --- BARRE LATÉRALE ---
 st.sidebar.markdown(f"### Utilisateur : {user['nom']}")
 st.sidebar.markdown(f"**Rôle système :** {user['role'].upper()}")
 st.sidebar.markdown("---")
-
-if missions_semaine:
-    try:
-        pdf_data = generer_pdf_global(missions_semaine)
-        st.sidebar.download_button(
-            label="Télécharger le rapport PDF",
-            data=pdf_data,
-            file_name=f"planning_{lundi_semaine.strftime('%d_%m_%Y')}.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
-    except Exception:
-        st.sidebar.error("Erreur lors de la préparation du PDF.")
 
 if st.sidebar.button("Déconnexion", use_container_width=True):
     st.session_state["user_connecte"] = None
@@ -231,8 +136,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Configuration dynamique des onglets
 if user["role"] == "admin":
-    onglet_actif = st.tabs(["Calendrier", "Planifier", "Rapports Reçus"])
+    onglet_actif = st.tabs(["Calendrier", "Planifier", "Rapports Reçus", "Gestion des Comptes"])
 else:
     onglet_actif = st.tabs(["Calendrier", "Envoyer un Rapport"])
 
@@ -285,7 +191,7 @@ with onglet_actif[0]:
                 st.markdown("<p style='text-align: center; opacity: 0.3; font-size: 12px;'>Aucun chantier</p>", unsafe_allow_html=True)
 
 # ==========================================
-# CÔTÉ ADMIN - ONGLET 2 : PLANIFIER (ENREGISTREMENT SÛR GOOGLE SHEET)
+# CÔTÉ ADMIN - ONGLET 2 : PLANIFIER
 # ==========================================
 if user["role"] == "admin":
     with onglet_actif[1]:
@@ -305,7 +211,6 @@ if user["role"] == "admin":
                 if equipe_sel and lieu_input and tache_input:
                     nouvel_id = int(time.time())
                     
-                    # Préparation de la nouvelle ligne pour Google Sheet
                     nouvelle_mission = pd.DataFrame([{
                         "id": nouvel_id,
                         "participants": json.dumps(equipe_sel),
@@ -316,7 +221,6 @@ if user["role"] == "admin":
                         "statut": statut_selection
                     }])
                     
-                    # Récupération, concaténation et envoi complet
                     try:
                         df_existant = conn.read(spreadsheet=URL_SHEET, ttl=0)
                         df_total = pd.concat([df_existant, nouvelle_mission], ignore_index=True)
@@ -326,3 +230,25 @@ if user["role"] == "admin":
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erreur d'écriture sur Google Sheet : {e}")
+
+    # ==========================================
+    # CÔTÉ ADMIN - ONGLET 4 : GESTION DES COMPTES (AFFICHAGE UNIQUEMENT)
+    # ==========================================
+    with onglet_actif[3]:
+        st.markdown("<h2 style='margin: 0 0 15px 0;'>Gestion des Comptes Utilisateurs</h2>", unsafe_allow_html=True)
+        st.markdown("Voici la liste complète des comptes configurés dans l'application avec leurs accès.")
+        
+        # Transformation du dictionnaire des utilisateurs en DataFrame propre pour l'affichage
+        liste_comptes = []
+        for email, infos in st.session_state["utilisateurs"].items():
+            liste_comptes.append({
+                "Nom complet": infos["nom"],
+                "Adresse Email": email,
+                "Rôle": infos["role"].upper(),
+                "Mot de passe": infos["mdp"]
+            })
+        
+        df_comptes = pd.DataFrame(liste_comptes)
+        
+        # Affichage sous forme de tableau Streamlit propre
+        st.dataframe(df_comptes, use_container_width=True, hide_index=True)
