@@ -30,12 +30,10 @@ UTILISATEURS = {
 if "utilisateurs" not in st.session_state:
     st.session_state["utilisateurs"] = UTILISATEURS
 
-# --- CONNEXION GOOGLE SHEETS EN DIRECT ---
-URL_SHEET = "https://docs.google.com/spreadsheets/d/1nIiT1ql3mL4VmcBuLlST8QD0QKItAHq72B9P0THH-ns/edit?usp=sharing"
-
+# --- CONNEXION GOOGLE SHEETS EN DIRECT VIA SERVICE ACCOUNT ---
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    df_plannings = conn.read(spreadsheet=URL_SHEET, ttl=5)
+    df_plannings = conn.read(ttl=5)
     st.session_state["plannings"] = df_plannings.to_dict(orient="records")
     for s in st.session_state["plannings"]:
         if isinstance(s.get("participants"), str):
@@ -324,9 +322,9 @@ if user["role"] == "admin":
                     }])
                     
                     try:
-                        df_existant = conn.read(spreadsheet=URL_SHEET, ttl=0)
+                        df_existant = conn.read(ttl=0)
                         df_total = pd.concat([df_existant, nouvelle_mission], ignore_index=True)
-                        conn.update(spreadsheet=URL_SHEET, data=df_total)
+                        conn.update(data=df_total)
                         st.toast("Mission enregistrée à vie sur Google Sheet !")
                         time.sleep(1)
                         st.rerun()
