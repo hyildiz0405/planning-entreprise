@@ -20,7 +20,7 @@
             "role": "admin",
             "mdp": "hml73200!"
         },
-         "mc@arhen.energy": {
+        "mc@arhen.energy": {
             "nom": "Marcia DE CASTRO",
             "role": "admin",
             "mdp": "hml73200!"
@@ -31,17 +31,6 @@
             "mdp": "hml73200!"
         }
     },
-    "plannings": [
-        {
-            "id": 1,
-            "participants": [
-                "admin@entreprise.com"
-            ],
-            "date_debut": "2026-06-16",
-            "date_fin": "2026-06-17",
-            "lieu": "TEST",
-            "tache": "test de l'application faite",
-            "statut": "Production"
-        }
-    ]
+    "plannings": [],
+    "rapports": []
 }
