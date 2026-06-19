@@ -77,9 +77,6 @@ if "rapports" not in st.session_state:
 if "date_calendrier" not in st.session_state:
     st.session_state["date_calendrier"] = datetime(2026, 6, 15).date()
 
-if "id_chantier_edition" not in st.session_state:
-    st.session_state["id_chantier_edition"] = None
-
 # --- GESTIONNAIRE DE COOKIES ---
 cookie_manager = stx.CookieManager()
 
@@ -254,7 +251,7 @@ st.markdown("""
     .shift-top-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
     .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
     .shift-lieu { margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #94A3B8; }
-    .shift-team { margin: 0 0 6px 0; font-size: 11px; color: #38BDF8; font-style: italic; }
+    .shift-team { margin: 4px 0 6px 0; font-size: 11px; color: #38BDF8; font-style: italic; font-weight: 500; }
     .shift-task { margin: 0; font-size: 12px; color: #E2E8F0; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
     .rapport-card { background: #1E293B; padding: 15px; border-radius: 8px; border-left: 4px solid #A855F7; margin-bottom: 10px; }
     </style>
@@ -284,25 +281,6 @@ with onglet_actif[0]:
         else:
             st.session_state["emp_filtre_key"] = user["email"]
 
-    if st.session_state["id_chantier_edition"] is not None:
-        chantier_a_editer = next((c for c in st.session_state["plannings"] if c["id"] == st.session_state["id_chantier_edition"]), None)
-        if chantier_a_editer:
-            with st.form("form_edition_chantier"):
-                col_e1, col_e2 = st.columns(2)
-                with col_e1:
-                    e_equipe = st.multiselect("Équipe", options=list(st.session_state["utilisateurs"].keys()), default=chantier_a_editer["participants"], format_func=lambda x: st.session_state["utilisateurs"][x]["nom"])
-                    e_debut = st.date_input("Début", datetime.strptime(chantier_a_editer["date_debut"], "%Y-%m-%d").date(), format="DD/MM/YYYY")
-                    e_fin = st.date_input("Fin", datetime.strptime(chantier_a_editer["date_fin"], "%Y-%m-%d").date(), format="DD/MM/YYYY")
-                with col_e2:
-                    e_lieu = st.text_input("Lieu", chantier_a_editer["lieu"])
-                    e_statut = st.selectbox("Statut", ["Production", "Planifié", "Urgent"], index=["Production", "Planifié", "Urgent"].index(chantier_a_editer["statut"]) if chantier_a_editer["statut"] in ["Production", "Planifié", "Urgent"] else 1)
-                e_tache = st.text_area("Descriptif", chantier_a_editer["tache"])
-                if st.form_submit_button("Modifier"):
-                    chantier_a_editer.update({"participants": e_equipe, "date_debut": str(e_debut), "date_fin": str(e_fin), "lieu": e_lieu.upper(), "statut": e_statut, "tache": e_tache})
-                    sauvegarder_donnees()
-                    st.session_state["id_chantier_edition"] = None
-                    st.rerun()
-
     cols = st.columns(7)
     for i, jour in enumerate(jours):
         current_date = datetime.strptime(jour["date_str"], "%Y-%m-%d").date()
@@ -315,19 +293,18 @@ with onglet_actif[0]:
             if shifts_du_jour:
                 for idx, s in enumerate(shifts_du_jour):
                     statut_style = COULEURS_STATUTS.get(s.get("statut", "Planifié"), {"accent": "#94A3B8", "bg_dot": "#475569"})
+                    
+                    # On va chercher les vrais noms de l'équipe assignée
                     noms_equipe = ", ".join([st.session_state["utilisateurs"][emp]["nom"] for emp in s.get("participants", []) if emp in st.session_state["utilisateurs"]])
-                    if user["role"] == "admin":
-                        with st.popover(s['lieu'], use_container_width=True):
-                            st.write(s['tache'])
-                            if st.button("Modifier", key=f"ed-{s['id']}-{i}-{idx}"):
-                                st.session_state["id_chantier_edition"] = s["id"]
-                                st.rerun()
-                            if st.button("Supprimer", key=f"sup-{s['id']}-{i}-{idx}", type="primary"):
-                                st.session_state["plannings"].remove(s)
-                                sauvegarder_donnees()
-                                st.rerun()
-                    else:
-                        st.markdown(f'<div class="shift-card-container" style="border-left-color: {statut_style["accent"]};"><p class="shift-lieu">{s["lieu"]}</p><p class="shift-task">{s["tache"]}</p></div>', unsafe_allow_html=True)
+                    
+                    # Rendu visuel propre contenant toutes les infos saisies (pour admin et employés désormais)
+                    st.markdown(f"""
+                        <div class="shift-card-container" style="border-left-color: {statut_style["accent"]};">
+                            <p class="shift-lieu">{s["lieu"]}</p>
+                            <p class="shift-team">Équipe : {noms_equipe if noms_equipe else "Aucune"}</p>
+                            <p class="shift-task">{s["tache"]}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
             else:
                 st.markdown("<p style='text-align: center; opacity: 0.2; font-size: 12px;'>Aucun chantier</p>", unsafe_allow_html=True)
 
@@ -339,17 +316,12 @@ if user["role"] != "admin":
         st.markdown("<h2 style='margin: 0 0 15px 0;'>Soumettre un Rapport de Chantier</h2>", unsafe_allow_html=True)
         with st.form("form_rapport_employe", clear_on_submit=True):
             
-            # 1. Solution simplifiée : On extrait TOUS les chantiers uniques saisis globalement dans l'application
             tous_les_chantiers = list(set([s["lieu"] for s in st.session_state["plannings"] if "lieu" in s]))
-            
-            # Tri alphabétique pour que ce soit plus propre à lire
             tous_les_chantiers.sort()
             
-            # Sécurité si aucun chantier n'existe dans toute la base
             if not tous_les_chantiers:
                 tous_les_chantiers = ["Aucun chantier existant sur le planning"]
             
-            # 2. Unique liste déroulante contenant tous les chantiers globaux
             choix_chantier = st.selectbox(
                 "Sélectionnez le chantier concerné", 
                 options=tous_les_chantiers
