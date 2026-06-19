@@ -81,9 +81,9 @@ if "date_calendrier" not in st.session_state:
 cookie_manager = stx.CookieManager()
 
 COULEURS_STATUTS = {
-    "Production": {"accent": "#38BDF8", "bg_dot": "#0284C7"},
-    "Planifié": {"accent": "#34D399", "bg_dot": "#059669"},
-    "Urgent": {"accent": "#F87171", "bg_dot": "#DC2626"}
+    "Production": {"accent": "#0284C7"},
+    "Planifié": {"accent": "#059669"},
+    "Urgent": {"accent": "#DC2626"}
 }
 
 # --- GESTION DE LA SESSION ---
@@ -240,20 +240,29 @@ if st.sidebar.button("Déconnexion", use_container_width=True):
     except Exception: pass
     st.rerun()
 
-# --- CSS STYLES ---
+# --- CSS STYLES ADAPTATIFS (MODE CLAIR / MODE SOMBRE) ---
 st.markdown("""
     <style>
-    .header-jour { text-align: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #334155; }
+    .header-jour { text-align: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid var(--text-color); }
     .nom-jour { margin: 0; font-size: 11px; opacity: 0.6; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
     .num-jour { margin: 4px 0 0 0; font-size: 22px; font-weight: 800; }
-    .zone-shifts-jour { display: flex; flex-direction: column; gap: 12px; }
-    .shift-card-container { border-radius: 8px; background: #1E293B; border-left: 4px solid #64748B; padding: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); margin-bottom: 2px; }
-    .shift-top-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-    .shift-lieu { margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #94A3B8; }
-    .shift-team { margin: 4px 0 6px 0; font-size: 11px; color: #38BDF8; font-style: italic; font-weight: 500; }
-    .shift-task { margin: 0; font-size: 12px; color: #E2E8F0; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
-    .rapport-card { background: #1E293B; padding: 15px; border-radius: 8px; border-left: 4px solid #A855F7; margin-bottom: 10px; }
+    
+    /* Utilisation des variables d'environnement Streamlit pour s'adapter au thème clair/sombre */
+    .shift-card-container { 
+        border-radius: 8px; 
+        background-color: var(--background-color);
+        background-image: linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05));
+        border: 1px solid rgba(128, 128, 128, 0.2);
+        border-left: 5px solid #64748B; 
+        padding: 12px; 
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); 
+        margin-bottom: 8px; 
+    }
+    
+    .shift-lieu { margin: 0; font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--text-color); }
+    .shift-team { margin: 4px 0 6px 0; font-size: 11px; color: #0284C7; font-style: italic; font-weight: 600; }
+    .shift-task { margin: 0; font-size: 12px; color: var(--text-color); opacity: 0.9; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
+    .rapport-card { background: var(--background-color); padding: 15px; border-radius: 8px; border: 1px solid rgba(128, 128, 128, 0.2); border-left: 4px solid #A855F7; margin-bottom: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -292,12 +301,9 @@ with onglet_actif[0]:
             
             if shifts_du_jour:
                 for idx, s in enumerate(shifts_du_jour):
-                    statut_style = COULEURS_STATUTS.get(s.get("statut", "Planifié"), {"accent": "#94A3B8", "bg_dot": "#475569"})
-                    
-                    # On va chercher les vrais noms de l'équipe assignée
+                    statut_style = COULEURS_STATUTS.get(s.get("statut", "Planifié"), {"accent": "#64748B"})
                     noms_equipe = ", ".join([st.session_state["utilisateurs"][emp]["nom"] for emp in s.get("participants", []) if emp in st.session_state["utilisateurs"]])
                     
-                    # Rendu visuel propre contenant toutes les infos saisies (pour admin et employés désormais)
                     st.markdown(f"""
                         <div class="shift-card-container" style="border-left-color: {statut_style["accent"]};">
                             <p class="shift-lieu">{s["lieu"]}</p>
@@ -306,7 +312,7 @@ with onglet_actif[0]:
                         </div>
                     """, unsafe_allow_html=True)
             else:
-                st.markdown("<p style='text-align: center; opacity: 0.2; font-size: 12px;'>Aucun chantier</p>", unsafe_allow_html=True)
+                st.markdown("<p style='text-align: center; opacity: 0.3; font-size: 12px;'>Aucun chantier</p>", unsafe_allow_html=True)
 
 # ==========================================
 # CÔTÉ EMPLOYÉ - ONGLET 2 : ENVOYER UN RAPPORT
@@ -388,9 +394,9 @@ if user["role"] == "admin":
                 st.markdown(f"""
                 <div class="rapport-card">
                     <p style="margin:0; font-size:12px; color:#A855F7; font-weight:bold;">📍 CHANTIER : {rap['chantier']}</p>
-                    <p style="margin:3px 0; font-size:14px; color:#E2E8F0;"><b>Par :</b> {rap['auteur']} ({rap['email_auteur']}) — <b>Le :</b> {date_f}</p>
-                    <hr style="border:0; border-top:1px solid #334155; margin:8px 0;"/>
-                    <p style="margin:0; font-size:13px; color:#94A3B8; white-space:pre-wrap;">{rap['texte']}</p>
+                    <p style="margin:3px 0; font-size:14px; color:var(--text-color);"><b>Par :</b> {rap['auteur']} ({rap['email_auteur']}) — <b>Le :</b> {date_f}</p>
+                    <hr style="border:0; border-top:1px solid rgba(128, 128, 128, 0.2); margin:8px 0;"/>
+                    <p style="margin:0; font-size:13px; color:var(--text-color); opacity: 0.8; white-space:pre-wrap;">{rap['texte']}</p>
                 </div>
                 """, unsafe_allow_html=True)
                 
