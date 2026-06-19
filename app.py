@@ -4,67 +4,48 @@ import calendar
 import extra_streamlit_components as stx
 from io import BytesIO
 import json
-import os
 import time
+from streamlit_gsheets import GSheetsConnection
+import pandas as pd
 
 # --- CONFIGURATION INITIALE DE L'APPLICATION ---
 st.set_page_config(page_title="Planning Entreprise", page_icon="logo.png", layout="wide")
 
-# --- CONFIGURATION DE LA PERSISTANCE (JSON) ---
-FICHIER_DONNEES = "donnees.json"
-
-def charger_donnees():
-    """Charge les données depuis le fichier JSON ou initialise les données par défaut."""
-    donnees_par_defaut = {
-        "utilisateurs": {
-            "admin@entreprise.com": {"nom": "Admin", "role": "admin", "mdp": "admin123"},
-            "sb@arhen.energy": {"nom": "Samir BOUABDELLAH", "role": "admin", "mdp": "hml73200!"},
-            "hasan.gozel@arhen.energy": {"nom": "Hasan GOZEL", "role": "admin", "mdp": "hml73200!"},
-            "mc@arhen.energy": {"nom": "Marcia DE CASTRO", "role": "admin", "mdp": "hml73200!"},
-            "loic.arribert@arhen.energy": {"nom": "Loïc ARRIBERT", "role": "admin", "mdp": "hml73200!"},
-            "hy@arhen.energy": {"nom": "Hümeyra YILDIZ", "role": "admin", "mdp": "hml73200!"}
-        },
-        "plannings": [],
-        "rapports": []
-    }
-    
-    if os.path.exists(FICHIER_DONNEES):
-        try:
-            with open(FICHIER_DONNEES, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if "rapports" not in data:
-                    data["rapports"] = []
-                return data
-        except Exception:
-            return donnees_par_defaut
-    else:
-        with open(FICHIER_DONNEES, "w", encoding="utf-8") as f:
-            json.dump(donnees_par_defaut, f, ensure_ascii=False, indent=4)
-        return donnees_par_defaut
-
-def sauvegarder_donnees():
-    """Sauvegarde l'état actuel de session_state dans le fichier JSON."""
-    donnees_a_sauver = {
-        "utilisateurs": st.session_state["utilisateurs"],
-        "plannings": st.session_state["plannings"],
-        "rapports": st.session_state["rapports"]
-    }
-    with open(FICHIER_DONNEES, "w", encoding="utf-8") as f:
-        json.dump(donnees_a_sauver, f, ensure_ascii=False, indent=4)
-
-# --- CHARGEMENT INITIAL EN SESSION_STATE ---
-donnees_chargees = charger_donnees()
+# --- COMPTES UTILISATEURS FIXES (PLUS DE CONFLIT JSON) ---
+UTILISATEURS = {
+    "admin@entreprise.com": {"nom": "Admin", "role": "admin", "mdp": "admin123"},    
+    "employe@entreprise.com": {"nom": "Employé", "role": "employe", "mdp": "123"},
+    "sb@arhen.energy": {"nom": "Samir BOUABDELLAH", "role": "admin", "mdp": "hml73200!"},
+    "hasan.gozel@arhen.energy": {"nom": "Hasan GOZEL", "role": "admin", "mdp": "hml73200!"},
+    "mc@arhen.energy": {"nom": "Marcia DE CASTRO", "role": "admin", "mdp": "hml73200!"},
+    "loic.arribert@arhen.energy": {"nom": "Loïc ARRIBERT", "role": "admin", "mdp": "hml73200!"},
+    "hy@arhen.energy": {"nom": "Hümeyra YILDIZ", "role": "admin", "mdp": "hml73200!"}
+}
 
 if "utilisateurs" not in st.session_state:
-    st.session_state["utilisateurs"] = donnees_chargees["utilisateurs"]
+    st.session_state["utilisateurs"] = UTILISATEURS
 
-if "plannings" not in st.session_state:
-    st.session_state["plannings"] = donnees_chargees["plannings"]
+# --- CONNEXION GOOGLE SHEETS EN DIRECT ---
+URL_SHEET = "https://docs.google.com/spreadsheets/d/1nIiT1ql3mL4VmcBuLlST8QD0QKItAHq72B9P0THH-ns/edit?usp=sharing"
+
+try:
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    df_plannings = conn.read(spreadsheet=URL_SHEET, ttl=5)
+    # Convertir le DataFrame en liste de dictionnaires pour le calendrier
+    st.session_state["plannings"] = df_plannings.to_dict(orient="records")
+    # Adapter le format des participants stockés sous forme de texte (ex: "['mail1', 'mail2']")
+    for s in st.session_state["plannings"]:
+        if isinstance(s.get("participants"), str):
+            try:
+                s["participants"] = json.loads(s["participants"].replace("'", '"'))
+            except:
+                s["participants"] = [s["participants"]]
+except Exception as e:
+    st.session_state["plannings"] = []
 
 if "rapports" not in st.session_state:
-    st.session_state["rapports"] = donnees_chargees["rapports"]
+    st.session_state["rapports"] = []
 
-# Initialisation du calendrier sur la date du jour réelle
 if "date_calendrier" not in st.session_state:
     st.session_state["date_calendrier"] = datetime.now().date()
 
@@ -100,15 +81,13 @@ if st.session_state["user_connecte"] is None:
     email_saisi = st.text_input("Adresse Email")
     mdp_saisi = st.text_input("Mot de passe", type="password")
     
-    col_connexion, col_aide = st.columns([1, 1])
-    with col_connexion:
-        if st.button("Se connecter", use_container_width=True):
-            if email_saisi in st.session_state["utilisateurs"] and st.session_state["utilisateurs"][email_saisi]["mdp"] == mdp_saisi:
-                st.session_state["user_connecte"] = {**st.session_state["utilisateurs"][email_saisi], "email": email_saisi}
-                cookie_manager.set("user_session", email_saisi, max_age=2592000)
-                st.rerun()
-            else:
-                st.error("Identifiants incorrects.")
+    if st.button("Se connecter", use_container_width=True):
+        if email_saisi in st.session_state["utilisateurs"] and st.session_state["utilisateurs"][email_saisi]["mdp"] == mdp_saisi:
+            st.session_state["user_connecte"] = {**st.session_state["utilisateurs"][email_saisi], "email": email_saisi}
+            cookie_manager.set("user_session", email_saisi, max_age=2592000)
+            st.rerun()
+        else:
+            st.error("Identifiants incorrects.")
     st.stop()
 
 # --- CONFIGURATION DES DATES ---
@@ -156,21 +135,21 @@ def generer_pdf_global(liste_missions):
     
     for s in liste_missions:
         noms_equipe = ", ".join([st.session_state["utilisateurs"][emp]["nom"] for emp in s.get("participants", []) if emp in st.session_state["utilisateurs"]])
-        tache_propre = s['tache'].replace('\n', '<br/>')
+        tache_propre = str(s['tache']).replace('\n', '<br/>')
         
         str_deb = s.get("date_debut", s.get("date", ""))
         str_fin = s.get("date_fin", s.get("date", ""))
         
-        d_deb = datetime.strptime(str_deb, "%Y-%m-%d").strftime("%d/%m/%Y") if str_deb else "—"
-        d_fin = datetime.strptime(str_fin, "%Y-%m-%d").strftime("%d/%m/%Y") if str_fin else "—"
+        d_deb = datetime.strptime(str(str_deb), "%Y-%m-%d").strftime("%d/%m/%Y") if str_deb else "—"
+        d_fin = datetime.strptime(str(str_fin), "%Y-%m-%d").strftime("%d/%m/%Y") if str_fin else "—"
         
         table_data.append([
-            Paragraph(s['lieu'], cell_bold),
+            Paragraph(str(s['lieu']), cell_bold),
             Paragraph(tache_propre, cell_style),
             Paragraph(d_deb, cell_style),
             Paragraph(d_fin, cell_style),
             Paragraph(noms_equipe, cell_style),
-            Paragraph(s.get('statut', 'Planifié'), cell_bold)
+            Paragraph(str(s.get('statut', 'Planifié')), cell_bold)
         ])
         
     t = Table(table_data, colWidths=[110, 292, 80, 80, 140, 80])
@@ -187,7 +166,6 @@ def generer_pdf_global(liste_missions):
     buffer.seek(0)
     return buffer
 
-# --- FILTRES ---
 employe_filtre = st.session_state.get("emp_filtre_key", "Tous les employés")
 user = st.session_state["user_connecte"]
 if user["role"] != "admin":
@@ -195,12 +173,12 @@ if user["role"] != "admin":
 
 missions_semaine = []
 for s in st.session_state["plannings"]:
-    str_deb = s.get("date_debut", s.get("date"))
-    str_fin = s.get("date_fin", s.get("date"))
-    if not str_deb or not str_fin:
+    str_deb = s.get("date_debut")
+    str_fin = s.get("date_fin")
+    if not str_deb or not str_fin or pd.isna(str_deb):
         continue
-    deb_s = datetime.strptime(str_deb, "%Y-%m-%d").date()
-    fin_s = datetime.strptime(str_fin, "%Y-%m-%d").date()
+    deb_s = datetime.strptime(str(str_deb), "%Y-%m-%d").date()
+    fin_s = datetime.strptime(str(str_fin), "%Y-%m-%d").date()
     
     if not (fin_s < lundi_semaine or deb_s > dimanche_semaine):
         if employe_filtre != "Tous les employés" and employe_filtre not in s.get("participants", []):
@@ -212,19 +190,19 @@ st.sidebar.markdown(f"### Utilisateur : {user['nom']}")
 st.sidebar.markdown(f"**Rôle système :** {user['role'].upper()}")
 st.sidebar.markdown("---")
 
-try:
-    pdf_data = generer_pdf_global(missions_semaine)
-    st.sidebar.download_button(
-        label="Télécharger le rapport PDF",
-        data=pdf_data,
-        file_name=f"planning_{lundi_semaine.strftime('%d_%m_%Y')}.pdf",
-        mime="application/pdf",
-        use_container_width=True
-    )
-except Exception:
-    st.sidebar.error("Erreur lors de la préparation du PDF.")
+if missions_semaine:
+    try:
+        pdf_data = generer_pdf_global(missions_semaine)
+        st.sidebar.download_button(
+            label="Télécharger le rapport PDF",
+            data=pdf_data,
+            file_name=f"planning_{lundi_semaine.strftime('%d_%m_%Y')}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+    except Exception:
+        st.sidebar.error("Erreur lors de la préparation du PDF.")
 
-st.sidebar.markdown("<br/>", unsafe_allow_html=True)
 if st.sidebar.button("Déconnexion", use_container_width=True):
     st.session_state["user_connecte"] = None
     try: cookie_manager.delete("user_session")
@@ -237,7 +215,6 @@ st.markdown("""
     .header-jour { text-align: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid var(--text-color); }
     .nom-jour { margin: 0; font-size: 11px; opacity: 0.6; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
     .num-jour { margin: 4px 0 0 0; font-size: 22px; font-weight: 800; }
-    
     .shift-card-container { 
         border-radius: 8px; 
         background-color: var(--background-color);
@@ -248,22 +225,19 @@ st.markdown("""
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); 
         margin-bottom: 8px; 
     }
-    
     .shift-lieu { margin: 0; font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--text-color); }
     .shift-team { margin: 4px 0 6px 0; font-size: 11px; color: #0284C7; font-style: italic; font-weight: 600; }
     .shift-task { margin: 0; font-size: 12px; color: var(--text-color); opacity: 0.9; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
-    .rapport-card { background: var(--background-color); padding: 15px; border-radius: 8px; border: 1px solid rgba(128, 128, 128, 0.2); border-left: 4px solid #A855F7; margin-bottom: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- DEFINITION DES ONGLETS ---
 if user["role"] == "admin":
-    onglet_actif = st.tabs(["Calendrier", "Planifier", "Rapports Reçus", "Liste des Comptes"])
+    onglet_actif = st.tabs(["Calendrier", "Planifier", "Rapports Reçus"])
 else:
     onglet_actif = st.tabs(["Calendrier", "Envoyer un Rapport"])
 
 # ==========================================
-# ONGLET 1 : CALENDRIER (Commun)
+# ONGLET 1 : CALENDRIER
 # ==========================================
 with onglet_actif[0]:
     st.markdown("<h2 style='margin: 0 0 15px 0;'>Calendrier</h2>", unsafe_allow_html=True)
@@ -285,12 +259,18 @@ with onglet_actif[0]:
         current_date = datetime.strptime(jour["date_str"], "%Y-%m-%d").date()
         with cols[i]:
             st.markdown(f'<div class="header-jour"><p class="nom-jour">{jour["nom"]}</p><p class="num-jour">{jour["date_texte"]}</p></div>', unsafe_allow_html=True)
-            shifts_du_jour = [s for s in st.session_state["plannings"] if datetime.strptime(s.get("date_debut"), "%Y-%m-%d").date() <= current_date <= datetime.strptime(s.get("date_fin"), "%Y-%m-%d").date()]
-            if employe_filtre != "Tous les employés":
-                shifts_du_jour = [s for s in shifts_du_jour if employe_filtre in s.get("participants", [])]
+            
+            shifts_du_jour = []
+            for s in st.session_state["plannings"]:
+                if not s.get("date_debut") or pd.isna(s.get("date_debut")): continue
+                d_deb = datetime.strptime(str(s["date_debut"]), "%Y-%m-%d").date()
+                d_fin = datetime.strptime(str(s["date_fin"]), "%Y-%m-%d").date()
+                if d_deb <= current_date <= d_fin:
+                    if employe_filtre == "Tous les employés" or employe_filtre in s.get("participants", []):
+                        shifts_du_jour.append(s)
             
             if shifts_du_jour:
-                for idx, s in enumerate(shifts_du_jour):
+                for s in shifts_du_jour:
                     statut_style = COULEURS_STATUTS.get(s.get("statut", "Planifié"), {"accent": "#64748B"})
                     noms_equipe = ", ".join([st.session_state["utilisateurs"][emp]["nom"] for emp in s.get("participants", []) if emp in st.session_state["utilisateurs"]])
                     
@@ -305,47 +285,7 @@ with onglet_actif[0]:
                 st.markdown("<p style='text-align: center; opacity: 0.3; font-size: 12px;'>Aucun chantier</p>", unsafe_allow_html=True)
 
 # ==========================================
-# CÔTÉ EMPLOYÉ - ONGLET 2 : ENVOYER UN RAPPORT
-# ==========================================
-if user["role"] != "admin":
-    with onglet_actif[1]:
-        st.markdown("<h2 style='margin: 0 0 15px 0;'>Soumettre un Rapport de Chantier</h2>", unsafe_allow_html=True)
-        with st.form("form_rapport_employe", clear_on_submit=True):
-            
-            tous_les_chantiers = list(set([s["lieu"] for s in st.session_state["plannings"] if "lieu" in s]))
-            tous_les_chantiers.sort()
-            
-            if not tous_les_chantiers:
-                tous_les_chantiers = ["Aucun chantier existant sur le planning"]
-            
-            choix_chantier = st.selectbox(
-                "Sélectionnez le chantier concerné", 
-                options=tous_les_chantiers
-            )
-            
-            date_rapport = st.date_input("Date du jour", datetime.now().date(), format="DD/MM/YYYY")
-            contenu_rapport = st.text_area("Compte-rendu (travaux réalisés, problèmes rencontrés, matériel manquant...)", height=200)
-            
-            if st.form_submit_button("Envoyer le rapport", use_container_width=True):
-                if choix_chantier == "Aucun chantier existant sur le planning":
-                    st.error("Impossible d'envoyer un rapport car aucun chantier n'existe dans l'application.")
-                elif contenu_rapport.strip():
-                    st.session_state["rapports"].append({
-                        "id": int(time.time()),
-                        "auteur": user["nom"],
-                        "email_auteur": user["email"],
-                        "chantier": choix_chantier,
-                        "date": str(date_rapport),
-                        "texte": contenu_rapport.strip()
-                    })
-                    sauvegarder_donnees()
-                    st.toast("Rapport envoyé à l'administration avec succès !")
-                    st.rerun()
-                else:
-                    st.error("Le descriptif du rapport ne peut pas être vide.")
-
-# ==========================================
-# CÔTÉ ADMIN - ONGLET 2 : PLANIFIER
+# CÔTÉ ADMIN - ONGLET 2 : PLANIFIER (ENREGISTREMENT SÛR GOOGLE SHEET)
 # ==========================================
 if user["role"] == "admin":
     with onglet_actif[1]:
@@ -360,69 +300,29 @@ if user["role"] == "admin":
                 lieu_input = st.text_input("Lieu ou Nom du projet")
                 statut_selection = st.selectbox("Statut", ["Production", "Planifié", "Urgent"])
             tache_input = st.text_area("Descriptif")
+            
             if st.form_submit_button("Planifier", use_container_width=True):
                 if equipe_sel and lieu_input and tache_input:
-                    nouvel_id = max([s["id"] for s in st.session_state["plannings"]]) + 1 if st.session_state["plannings"] else 1
-                    st.session_state["plannings"].append({"id": nouvel_id, "participants": equipe_sel, "date_debut": str(date_debut_sel), "date_fin": str(date_fin_sel), "lieu": lieu_input.upper(), "tache": tache_input, "statut": statut_selection})
-                    sauvegarder_donnees()
-                    st.toast("Mission enregistrée !")
-                    st.rerun()
-
-# ==========================================
-# CÔTÉ ADMIN - ONGLET 3 : CONSULTATION RAPPORTS
-# ==========================================
-if user["role"] == "admin":
-    with onglet_actif[2]:
-        st.markdown("<h2 style='margin: 0 0 15px 0;'>Historique des Rapports de Chantier</h2>", unsafe_allow_html=True)
-        
-        if not st.session_state["rapports"]:
-            st.info("Aucun rapport n'a été déposé par les employés pour le moment.")
-        else:
-            pour_affichage = sorted(st.session_state["rapports"], key=lambda x: x.get("id", 0), reverse=True)
-            for rap in pour_affichage:
-                date_f = datetime.strptime(rap["date"], "%Y-%m-%d").strftime("%d/%m/%Y")
-                st.markdown(f"""
-                <div class="rapport-card">
-                    <p style="margin:0; font-size:12px; color:#A855F7; font-weight:bold;">📍 CHANTIER : {rap['chantier']}</p>
-                    <p style="margin:3px 0; font-size:14px; color:var(--text-color);"><b>Par :</b> {rap['auteur']} ({rap['email_auteur']}) — <b>Le :</b> {date_f}</p>
-                    <hr style="border:0; border-top:1px solid rgba(128, 128, 128, 0.2); margin:8px 0;"/>
-                    <p style="margin:0; font-size:13px; color:var(--text-color); opacity: 0.8; white-space:pre-wrap;">{rap['texte']}</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                if st.button("Supprimer ce rapport", key=f"del-rap-{rap['id']}", type="secondary"):
-                    st.session_state["rapports"] = [r for r in st.session_state["rapports"] if r["id"] != rap["id"]]
-                    sauvegarder_donnees()
-                    st.rerun()
-
-# ==========================================
-# CÔTÉ ADMIN - ONGLET 4 : COMPTES
-# ==========================================
-if user["role"] == "admin":
-    with onglet_actif[3]:
-        st.markdown("<h2 style='margin: 0 0 15px 0;'>Créer un nouveau compte</h2>", unsafe_allow_html=True)
-        with st.form("form_centre_compte", clear_on_submit=True):
-            col_c1, col_c2 = st.columns(2)
-            with col_c1:
-                nouvel_email = st.text_input("Adresse e-mail")
-                nouveau_nom = st.text_input("Nom")
-            with col_c2:
-                nouveau_mdp = st.text_input("Mot de passe", type="password")
-                nouveau_role = st.selectbox("Rôle", options=["Employé", "Admin"])
-            if st.form_submit_button("Créer le compte", use_container_width=True):
-                if nouvel_email and nouveau_nom and nouveau_mdp:
-                    st.session_state["utilisateurs"][nouvel_email] = {"nom": nouveau_nom, "role": "admin" if nouveau_role == "Admin" else "employe", "mdp": nouveau_mdp}
-                    sauvegarder_donnees()
-                    st.toast("Compte créé !")
-                    st.rerun()
-
-        st.markdown("---")
-        for mail, data in list(st.session_state["utilisateurs"].items()):
-            with st.expander(f"{data['nom']} ({mail})"):
-                nouveau_mdp_saisi = st.text_input("Modifier le mot de passe", value=data["mdp"], key=f"mdp-{mail}", type="password")
-                if nouveau_mdp_saisi != data["mdp"]:
-                    if st.button("Enregistrer", key=f"btn-mdp-{mail}"):
-                        st.session_state["utilisateurs"][mail]["mdp"] = nouveau_mdp_saisi
-                        sauvegarder_donnees()
-                        st.toast("Modifié !")
+                    nouvel_id = int(time.time())
+                    
+                    # Préparation de la nouvelle ligne pour Google Sheet
+                    nouvelle_mission = pd.DataFrame([{
+                        "id": nouvel_id,
+                        "participants": json.dumps(equipe_sel),
+                        "date_debut": str(date_debut_sel),
+                        "date_fin": str(date_fin_sel),
+                        "lieu": lieu_input.upper(),
+                        "tache": tache_input,
+                        "statut": statut_selection
+                    }])
+                    
+                    # Récupération, concaténation et envoi complet
+                    try:
+                        df_existant = conn.read(spreadsheet=URL_SHEET, ttl=0)
+                        df_total = pd.concat([df_existant, nouvelle_mission], ignore_index=True)
+                        conn.update(spreadsheet=URL_SHEET, data=df_total)
+                        st.toast("Mission enregistrée à vie sur Google Sheet !")
+                        time.sleep(1)
                         st.rerun()
+                    except Exception as e:
+                        st.error(f"Erreur d'écriture sur Google Sheet : {e}")
