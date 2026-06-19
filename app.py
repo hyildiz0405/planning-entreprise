@@ -16,9 +16,8 @@ from google.oauth2.service_account import Credentials
 # --- CONFIGURATION INITIALE DE L'APPLICATION ---
 st.set_page_config(page_title="Planning Entreprise", page_icon="logo.png", layout="wide")
 
-# --- CONNEXION À GOOGLE SHEETS ---
-NOM_DU_SHEET = "Planning Arhen Data"  # /!\ Change par le nom exact de ton Google Sheet
-FICHIER_CLE_JSON = "arhen-planning-e680822dc074.json"
+# --- CONNEXION À GOOGLE SHEETS VIA SECRETS ---
+NOM_DU_SHEET = "Planning Arhen Data"  # /!\ Modifiez si votre fichier Google Sheet a un autre nom exact
 
 @st.cache_resource
 def initialiser_gspread():
@@ -27,8 +26,9 @@ def initialiser_gspread():
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive"
         ]
-        # Chargement des identifiants depuis le fichier fourni
-        creds = Credentials.from_service_account_file(FICHIER_CLE_JSON, scopes=scopes)
+        # Lecture sécurisée depuis l'onglet "Secrets" de Streamlit Cloud
+        creds_dict = st.secrets["gcp_service_account"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
         return client.open(NOM_DU_SHEET)
     except Exception as e:
@@ -62,7 +62,6 @@ def sauvegarder_utilisateur_sheets(identifiant, infos):
     if not sh: return
     try:
         ws = sh.worksheet("utilisateurs")
-        # On ajoute simplement une nouvelle ligne
         ws.append_row([identifiant, infos["nom"], infos["role"], infos["mdp"], infos["tel"], infos["email_contact"]])
     except Exception as e:
         st.error(f"Erreur d'écriture utilisateur dans Google Sheets : {e}")
@@ -76,7 +75,6 @@ def charger_plannings_sheets():
         
         liste_plannings = []
         for r in records:
-            # Les participants sont stockés sous forme de texte séparé par des virgules
             participants = [p.strip() for p in str(r["participants"]).split(",") if p.strip()]
             liste_plannings.append({
                 "id": r["id"],
@@ -117,36 +115,14 @@ def sauvegarder_rapport_sheets(rapport):
     except Exception as e:
         st.error(f"Erreur d'écriture rapport dans Google Sheets : {e}")
 
-# --- CONFIGURATION CONFIGURATION SMTP ---
-SMTP_SERVEUR = "smtp.gmail.com"
-SMTP_PORT = 465
-SMTP_EXPEDITEUR = "votre_email_notif@gmail.com"
-SMTP_MOT_DE_PASSE = "votre_mot_de_passe_application" 
-
-# --- FONCTION D'ENVOI D'EMAIL ---
-def envoyer_email_notification(destinataire, sujet, message_corps):
-    if not destinataire or "@" not in destinataire:
-        return False
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = SMTP_EXPEDITEUR
-        msg['To'] = destinataire
-        msg['Subject'] = sujet
-        msg.attach(MIMEText(message_corps, 'plain', 'utf-8'))
-        
-        server = smtplib.SMTP_SSL(SMTP_SERVEUR, SMTP_PORT)
-        server.login(SMTP_EXPEDITEUR, SMTP_MOT_DE_PASSE)
-        server.sendmail(SMTP_EXPEDITEUR, destinataire, msg.as_string())
-        server.quit()
-        return True
-    except Exception as e:
-        print(f"Erreur d'envoi email à {destinataire} : {e}")
-        return False
-
-# --- VALEURS PAR DÉFAUT SI LE GOOGLE SHEET EST VIDE ---
+# --- VALEURS PAR DÉFAUT (SI LE TABLEUR EST VIDE) ---
 UTILISATEURS_PAR_DEFAUT = {
     "admin@entreprise.com": {"nom": "Admin", "role": "admin", "mdp": "admin123", "tel": "", "email_contact": "admin@entreprise.com"},    
-    "sb@arhen.energy": {"nom": "Samir BOUABDELLAH", "role": "admin", "mdp": "hml73200!", "tel": "0601020304", "email_contact": "sb@arhen.energy"}
+    "sb@arhen.energy": {"nom": "Samir BOUABDELLAH", "role": "admin", "mdp": "hml73200!", "tel": "0601020304", "email_contact": "sb@arhen.energy"},
+    "hasan.gozel@arhen.energy": {"nom": "Hasan GOZEL", "role": "admin", "mdp": "hml73200!", "tel": "", "email_contact": "hasan.gozel@arhen.energy"},
+    "loic.arribert@arhen.energy": {"nom": "Loïc ARRIBERT", "role": "admin", "mdp": "hml73200!", "tel": "", "email_contact": "loic.arribert@arhen.energy"},
+    "mc@arhen.energy": {"nom": "Marcia DE CASTRO", "role": "admin", "mdp": "hml73200!", "tel": "", "email_contact": "mc@arhen.energy"},
+    "hy@arhen.energy": {"nom": "Hümeyra YILDIZ", "role": "admin", "mdp": "test123", "tel": "", "email_contact": "hy@arhen.energy"}
 }
 
 PLANNINGS_PAR_DEFAUT = [
@@ -161,7 +137,7 @@ PLANNINGS_PAR_DEFAUT = [
     }
 ]
 
-# --- SYNCHRONISATION INITIALE DE LA SESSION ---
+# --- SYNCHRONISATION DE LA SESSION ---
 if "utilisateurs" not in st.session_state:
     st.session_state["utilisateurs"] = charger_utilisateurs_sheets()
 
@@ -174,7 +150,6 @@ if "rapports" not in st.session_state:
 if "date_calendrier" not in st.session_state:
     st.session_state["date_calendrier"] = datetime.now().date()
 
-# --- GESTIONNAIRE DE COOKIES ---
 cookie_manager = stx.CookieManager()
 
 COULEURS_STATUTS = {
@@ -219,7 +194,6 @@ if st.session_state["user_connecte"] is None:
         if st.button("Se connecter", use_container_width=True):
             user_trouve = None
             cle_user = None
-            
             for key, infos in st.session_state["utilisateurs"].items():
                 if type_connexion == "Email" and key == identifiant_saisi:
                     user_trouve = infos
@@ -246,7 +220,6 @@ if st.session_state["user_connecte"] is None:
         
         email_neuf = ""
         tel_neuf = ""
-        
         if type_crea == "Email":
             email_neuf = st.text_input("Adresse Email (servira d'identifiant)").strip().lower()
             tel_neuf = st.text_input("Numéro de téléphone (Optionnel)").strip()
@@ -265,7 +238,6 @@ if st.session_state["user_connecte"] is None:
                 st.error("Veuillez renseigner un numéro de téléphone valide.")
             else:
                 cle_creation = email_neuf if email_neuf else tel_neuf
-                
                 if cle_creation in st.session_state["utilisateurs"]:
                     st.error("Cet identifiant est déjà utilisé par un autre compte.")
                 else:
@@ -277,8 +249,6 @@ if st.session_state["user_connecte"] is None:
                         "email_contact": email_neuf
                     }
                     st.session_state["utilisateurs"][cle_creation] = nouvel_user
-                    
-                    # SAUVEGARDE GOOGLE SHEETS
                     sauvegarder_utilisateur_sheets(cle_creation, nouvel_user)
                     st.success("Compte créé avec succès ! Enregistré dans Google Sheets.")
     st.stop()
@@ -417,29 +387,7 @@ if user["role"] == "admin":
                         "statut": statut_selection
                     }
                     st.session_state["plannings"].append(nouvelle_mission)
-                    
-                    # SAUVEGARDE GOOGLE SHEETS
                     sauvegarder_planning_sheets(nouvelle_mission)
-                    
-                    # --- EMAILS DE NOTIFICATION ---
-                    compteur_mails = 0
-                    sujet_mail = f"[PLANNING ARHEN] Nouvelle mission affectée : {lieu_input.upper()}"
-                    corps_mail = f"Bonjour,\n\nUne nouvelle mission vous a été attribuée dans le planning.\n\n" \
-                                 f"📍 Lieu : {lieu_input.upper()}\n" \
-                                 f"📅 Du : {date_debut_sel.strftime('%d/%m/%Y')} au {date_fin_sel.strftime('%d/%m/%Y')}\n" \
-                                 f"📝 Statut : {statut_selection}\n\n" \
-                                 f"Description :\n{tache_input}"
-                    
-                    for membre_id in equipe_sel:
-                        profil = st.session_state["utilisateurs"].get(membre_id, {})
-                        email_dest = profil.get("email_contact", "")
-                        if "@" in membre_id:
-                            email_dest = membre_id
-                            
-                        if email_dest and "@" in email_dest:
-                            succes = envoyer_email_notification(email_dest, sujet_mail, corps_mail)
-                            if succes:
-                                compteur_mails += 1
                     
                     st.success("Mission ajoutée et synchronisée avec Google Sheets !")
                     time.sleep(1)
@@ -489,7 +437,7 @@ else:
             rapport_texte = st.text_area("Détails de l'avancement et remarques")
             
             if st.form_submit_button("Envoyer le rapport", use_container_width=True):
-                if projet_nom and rapport_texte:
+                if projet_nom and report_texte:
                     nouveau_rapport = {
                         "employe": user["nom"],
                         "date": datetime.now().strftime("%d/%m/%Y à %H:%M"),
@@ -497,7 +445,5 @@ else:
                         "contenu": rapport_texte
                     }
                     st.session_state["rapports"].append(nouveau_rapport)
-                    
-                    # SAUVEGARDE GOOGLE SHEETS
                     sauvegarder_rapport_sheets(nouveau_rapport)
                     st.success("Rapport transmis et enregistré dans Google Sheets !")
