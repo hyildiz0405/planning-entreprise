@@ -193,7 +193,7 @@ def sauvegarder_rapport_sheets(rapport):
 # --- VALEURS PAR DÉFAUT ---
 UTILISATEURS_PAR_DEFAUT = {
     "admin@entreprise.com": {"nom": "Admin", "role": "admin", "mdp": "admin123", "tel": "", "email_contact": "admin@entreprise.com"},    
-    "sb@arhen.energy": {"nom": "Samir BOUABDELLAH", "role": "admin", "mdp": "hml73200!", "tel": "0601020304", "email_contact": "sb@arhen.energy"},
+    "sb@arhen.energy": {"nom": "Samir BOUABDELLAH", "role": "admin", "mdp": "hml73200!", "tel": "", "email_contact": "sb@arhen.energy"},
     "hasan.gozel@arhen.energy": {"nom": "Hasan GOZEL", "role": "admin", "mdp": "hml73200!", "tel": "", "email_contact": "hasan.gozel@arhen.energy"},
     "loic.arribert@arhen.energy": {"nom": "Loïc ARRIBERT", "role": "admin", "mdp": "hml73200!", "tel": "", "email_contact": "loic.arribert@arhen.energy"},
     "mc@arhen.energy": {"nom": "Marcia DE CASTRO", "role": "admin", "mdp": "hml73200!", "tel": "", "email_contact": "mc@arhen.energy"},
