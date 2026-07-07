@@ -29,7 +29,7 @@ NOM_DU_SHEET = "Planning Arhen Data"
 def initialiser_gspread():
     try:
         scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/sheets",
             "https://www.googleapis.com/auth/drive"
         ]
         creds_dict = st.secrets["gcp_service_account"]
@@ -41,6 +41,26 @@ def initialiser_gspread():
         return None
 
 sh = initialiser_gspread()
+
+# --- FONCTION SECURE D'ENVOI DE NOTIFICATION PAR EMAIL ---
+def envoyer_notification_email(destinataire, sujet, contenu_html):
+    try:
+        cfg = st.secrets["email"]
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = sujet
+        msg["From"] = cfg["expediteur"]
+        msg["To"] = destinataire
+        
+        part = MIMEText(contenu_html, "html")
+        msg.attach(part)
+        
+        with smtplib.SMTP_SSL(cfg["smtp_server"], int(cfg["smtp_port"])) as server:
+            server.login(cfg["expediteur"], cfg["mot_de_passe"])
+            server.sendmail(cfg["expediteur"], destinataire, msg.as_string())
+        return True
+    except Exception as e:
+        st.sidebar.warning(f"Notification non envoyée : {e}")
+        return False
 
 # --- FONCTION POUR GÉNÉRER LE PDF DU PLANNING SEMAINE ---
 def generer_pdf_planning(jours, plannings, utilisateurs, employe_filtre):
@@ -265,7 +285,6 @@ st.sidebar.markdown(f"### Utilisateur : {user['nom']}")
 st.sidebar.markdown(f"**Rôle :** {user['role'].upper()}")
 st.sidebar.markdown("---")
 
-# Filtre de l'employé pour le PDF (Doit être défini avant de générer le bouton)
 if user["role"] == "admin":
     if "sidebar_emp_filtre" not in st.session_state:
         st.session_state["sidebar_emp_filtre"] = "Tous les employés"
@@ -275,7 +294,6 @@ else:
     employe_filtre = user_key
 
 st.sidebar.markdown("### Téléchargement")
-# Génération dynamique du PDF du planning complet de la semaine
 pdf_planning_data = generer_pdf_planning(jours, st.session_state["plannings"], st.session_state["utilisateurs"], employe_filtre)
 st.sidebar.download_button(
     label="📅 Télécharger le Planning (PDF)",
@@ -319,12 +337,10 @@ with onglet_actif[0]:
         st.date_input("Sélection de la date", key="date_calendrier", format="DD/MM/YYYY")
     with col_filtre_affichage:
         if user["role"] == "admin":
-            # Le filtre d'affichage écran se synchronise ou s'ajuste indépendamment
             liste_affichage = ["Tous les employés"] + list(st.session_state["utilisateurs"].keys())
             employe_affichage = st.selectbox("Filtrer l'affichage écran :", options=liste_affichage, format_func=lambda x: "Tous les employés" if x == "Tous les employés" else st.session_state["utilisateurs"][x]["nom"], key="screen_emp_filtre")
         else: employe_affichage = user_key
 
-    # Affichage grille du calendrier
     cols = st.columns(7)
     for i, jour in enumerate(jours):
         current_date = datetime.strptime(jour["date_str"], "%Y-%m-%d").date()
@@ -346,7 +362,7 @@ with onglet_actif[0]:
             else: st.markdown("<p style='text-align: center; opacity: 0.3; font-size: 12px;'>Aucun chantier</p>", unsafe_allow_html=True)
 
 # ==========================================
-# CÔTÉ ADMIN - ENREGISTREMENT ET RAPPORTS REÇUS
+# CÔTÉ ADMIN - ENREGISTREMENT ET NOTIFICATIONS PAR MAIL
 # ==========================================
 if user["role"] == "admin":
     with onglet_actif[1]:
@@ -361,12 +377,36 @@ if user["role"] == "admin":
                 lieu_input = st.text_input("Lieu ou Nom du projet")
                 statut_selection = st.selectbox("Statut", ["Production", "Planifié", "Urgent"])
             tache_input = st.text_area("Descriptif")
+            
             if st.form_submit_button("Planifier", use_container_width=True):
                 if equipe_sel and lieu_input and tache_input:
                     nouvelle_mission = {"id": int(time.time()), "participants": equipe_sel, "date_debut": str(date_debut_sel), "date_fin": str(date_fin_sel), "lieu": lieu_input.upper(), "tache": tache_input, "statut": statut_selection}
                     st.session_state["plannings"].append(nouvelle_mission)
                     sauvegarder_planning_sheets(nouvelle_mission)
-                    st.success("Mission synchronisée !")
+                    
+                    # --- DÉCLENCHEMENT NOTIFICATIONS EMAILS AUX EMPLOYÉS AFFECTÉS ---
+                    for emp_key in equipe_sel:
+                        infos_employe = st.session_state["utilisateurs"].get(emp_key, {})
+                        email_destinataire = infos_employe.get("email_contact", "").strip()
+                        
+                        if not email_destinataire and "@" in emp_key:
+                            email_destinataire = emp_key
+                            
+                        if "@" in email_destinataire:
+                            corps_mail = f"""
+                            <h3>Bonjour {infos_employe.get('nom', 'Employé')},</h3>
+                            <p>Une nouvelle mission vient de vous être assignée sur le planning :</p>
+                            <ul>
+                                <li><b>Lieu / Projet :</b> {lieu_input.upper()}</li>
+                                <li><b>Période :</b> Du {date_debut_sel.strftime('%d/%m/%Y')} au {date_fin_sel.strftime('%d/%m/%Y')}</li>
+                                <li><b>Statut :</b> {statut_selection}</li>
+                                <li><b>Description :</b> {tache_input}</li>
+                            </ul>
+                            <p>Connectez-vous sur l'application pour consulter votre calendrier complet.</p>
+                            """
+                            envoyer_notification_email(email_destinataire, f"[Planning] Nouvelle affectation : {lieu_input.upper()}", corps_mail)
+                            
+                    st.success("Mission synchronisée et notifications e-mails envoyées aux employés !")
                     time.sleep(0.5); st.rerun()
 
     with onglet_actif[2]:
@@ -385,16 +425,36 @@ if user["role"] == "admin":
         liste_comptes = [{"Nom complet": infos["nom"], "Identifiant": idf, "Téléphone": infos.get("tel",""), "Rôle": infos["role"].upper()} for idf, infos in st.session_state["utilisateurs"].items()]
         st.dataframe(pd.DataFrame(liste_comptes), use_container_width=True, hide_index=True)
 
+# ==========================================
+# CÔTÉ EMPLOYÉ - ENVOI DE RAPPORT ET NOTIFICATION ADMIN
+# ==========================================
 else:
     with onglet_actif[1]:
         st.markdown("<h2>Envoyer un Rapport d'Activité</h2>", unsafe_allow_html=True)
         with st.form("form_rapport_employe", clear_on_submit=True):
             projet_nom = st.text_input("Nom du chantier / Lieu")
             rapport_texte = st.text_area("Détails de l'avancement")
+            
             if st.form_submit_button("Envoyer le rapport", use_container_width=True):
                 if projet_nom and rapport_texte:
-                    nouveau_rapport = {"employe": user["nom"], "date": datetime.now().strftime("%d/%m/%Y à %H:%M"), "projet": projet_nom.upper(), "contenu": rapport_texte}
+                    date_now_str = datetime.now().strftime("%d/%m/%Y à %H:%M")
+                    nouveau_rapport = {"employe": user["nom"], "date": date_now_str, "projet": projet_nom.upper(), "contenu": rapport_texte}
                     st.session_state["rapports"].append(nouveau_rapport)
                     sauvegarder_rapport_sheets(nouveau_rapport)
-                    st.success("Rapport transmis !")
+                    
+                    # --- NOTIFICATION DE RAPPORT ENVOYÉ À L'ADMINISTRATEUR PRINCIPAL ---
+                    admin_principal = "appli.planning0@gmail.com"
+                    corps_admin_mail = f"""
+                    <h3>Nouveau rapport d'activité reçu</h3>
+                    <p><b>Employé :</b> {user["nom"]}</p>
+                    <p><b>Chantier / Projet :</b> {projet_nom.upper()}</p>
+                    <p><b>Date d'envoi :</b> {date_now_str}</p>
+                    <hr/>
+                    <p><b>Contenu du rapport :</b></p>
+                    <p style="background-color: #f3f4f6; padding: 10px; border-left: 4px solid #0284C7;">{rapport_texte.replace('\n', '<br/>')}</p>
+                    <p>Vous pouvez télécharger la version PDF officielle directement depuis votre espace administrateur.</p>
+                    """
+                    envoyer_notification_email(admin_principal, f"[Rapport Reçu] {user['nom']} - {projet_nom.upper()}", corps_admin_mail)
+                    
+                    st.success("Rapport transmis et enregistré !")
                     time.sleep(0.5); st.rerun()
