@@ -29,7 +29,7 @@ NOM_DU_SHEET = "Planning Arhen Data"
 def initialiser_gspread():
     try:
         scopes = [
-            "https://www.googleapis.com/auth/sheets",
+            "https://www.googleapis.com/auth/spreadsheets", # Scope corrigé pour gspread
             "https://www.googleapis.com/auth/drive"
         ]
         creds_dict = st.secrets["gcp_service_account"]
@@ -51,7 +51,7 @@ def envoyer_notification_email(destinataire, sujet, contenu_html):
         msg["From"] = cfg["expediteur"]
         msg["To"] = destinataire
         
-        part = MIMEText(contenu_html, "html")
+        part = MIMEText(contents_html := contenu_html, "html")
         msg.attach(part)
         
         with smtplib.SMTP_SSL(cfg["smtp_server"], int(cfg["smtp_port"])) as server:
