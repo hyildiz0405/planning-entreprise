@@ -274,7 +274,7 @@ if st.session_state["user_connecte"] is None:
     with onglet_auth[1]:
         st.subheader("Créer un compte")
         with st.form("form_inscription", clear_on_submit=True):
-            nouvel_identifiant = st.text_input("Adresse Email (Sert d'identifiant)").strip().lower()
+            nouvel_identifiant = st.text_input("Adresse Email").strip().lower()
             nouveau_nom = st.text_input("Nom et Prénom")
             nouveau_tel = st.text_input("Numéro de téléphone")
             nouveau_mdp = st.text_input("Choisissez un mot de passe", type="password")
