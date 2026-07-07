@@ -59,7 +59,6 @@ def envoyer_notification_email(destinataire, sujet, contenu_html):
             server.sendmail(cfg["expediteur"], destinataire, msg.as_string())
         return True
     except Exception as e:
-        # Affiche l'erreur en plein écran pour comprendre ce qui bloque
         st.error(f"Erreur d'envoi de l'e-mail à {destinataire} : {e}")
         return False
 
@@ -251,6 +250,8 @@ if "user_connecte" not in st.session_state:
 # --- ÉCRAN D'ACCUEIL / AUTH ---
 if st.session_state["user_connecte"] is None:
     onglet_auth = st.tabs(["Connexion", "Créer un compte"])
+    
+    # Onglet 1 : Connexion
     with onglet_auth[0]:
         st.subheader("Connexion")
         type_connexion = st.radio("Se connecter avec :", ["Email", "Numéro de téléphone"], horizontal=True, key="type_conn")
@@ -268,6 +269,38 @@ if st.session_state["user_connecte"] is None:
                 st.success(f"Bienvenue {user_trouve['nom']} !")
                 time.sleep(0.5); st.rerun()
             else: st.error("Identifiants ou mot de passe incorrects.")
+            
+    # Onglet 2 : Créer un compte (Intégré et opérationnel)
+    with onglet_auth[1]:
+        st.subheader("Créer un compte")
+        with st.form("form_inscription", clear_on_submit=True):
+            nouvel_identifiant = st.text_input("Adresse Email (Sert d'identifiant)").strip().lower()
+            nouveau_nom = st.text_input("Nom et Prénom")
+            nouveau_tel = st.text_input("Numéro de téléphone")
+            nouveau_mdp = st.text_input("Choisissez un mot de passe", type="password")
+            
+            if st.form_submit_button("S'inscrire", use_container_width=True):
+                if nouvel_identifiant and nouveau_nom and nouveau_mdp:
+                    if nouvel_identifiant in st.session_state["utilisateurs"]:
+                        st.error("Cet identifiant existe déjà.")
+                    else:
+                        # Rôle employé attribué par défaut à l'inscription
+                        infos_nouvel_user = {
+                            "nom": nouveau_nom,
+                            "role": "employe",
+                            "mdp": nouveau_mdp,
+                            "tel": nouveau_tel,
+                            "email_contact": nouvel_identifiant
+                        }
+                        # Sauvegarde locale session + écriture Google Sheets
+                        st.session_state["utilisateurs"][nouvel_identifiant] = infos_nouvel_user
+                        sauvegarder_utilisateur_sheets(nouvel_identifiant, infos_nouvel_user)
+                        
+                        st.success("Compte créé avec succès ! Vous pouvez maintenant basculer sur l'onglet Connexion.")
+                        time.sleep(1.5)
+                        st.rerun()
+                else:
+                    st.error("Veuillez remplir tous les champs obligatoires (Email, Nom, Mot de passe).")
     st.stop()
 
 user = st.session_state["user_connecte"]
