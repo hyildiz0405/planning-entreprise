@@ -161,19 +161,31 @@ def charger_utilisateurs_sheets():
         ws = sh.worksheet("utilisateurs")
         records = ws.get_all_records()
         if not records: return UTILISATEURS_PAR_DEFAUT
+        
         users_dict = {}
         for r in records:
-            users_dict[str(r["identifiant"]).strip().lower()] = {
-                "nom": r["nom"], "role": str(r["role"]).strip().lower(), "mdp": str(r["mdp"]), "tel": str(r["tel"]), "email_contact": r["email_contact"]
+            # Accepte aussi bien 'identifiant' que 'email' en première colonne
+            idf = str(r.get("identifiant") or r.get("email") or r.get("email_contact", "")).strip().lower()
+            if not idf:
+                continue
+                
+            users_dict[idf] = {
+                "nom": r.get("nom", "Sans nom"),
+                "role": str(r.get("role", "employe")).strip().lower(),
+                "mdp": str(r.get("mdp", "")),
+                "tel": str(r.get("tel", "")),
+                "email_contact": r.get("email_contact") or r.get("email") or idf
             }
-        return users_dict
-    except Exception: return UTILISATEURS_PAR_DEFAUT
+        return users_dict if users_dict else UTILISATEURS_PAR_DEFAUT
+    except Exception as e:
+        st.error(f"Erreur de lecture des utilisateurs : {e}")
+        return UTILISATEURS_PAR_DEFAUT
 
 def sauvegarder_utilisateur_sheets(identifiant, infos):
     if not sh: return
     try:
         ws = sh.worksheet("utilisateurs")
-        # Alignement strict des 6 colonnes (A à F) pour éviter le décalage
+        # Structure stricte pour vos colonnes : identifiant, nom, role, mdp, tel, email_contact
         ligne = [
             str(identifiant).strip().lower(),
             str(infos.get("nom", "")),
@@ -183,8 +195,9 @@ def sauvegarder_utilisateur_sheets(identifiant, infos):
             str(infos.get("email_contact", ""))
         ]
         ws.append_row(ligne, value_input_option='USER_ENTERED')
-    except Exception as e: st.error(f"Erreur d'écriture utilisateur : {e}")
-
+    except Exception as e:
+        st.error(f"Erreur d'écriture utilisateur : {e}")
+        
 def modifier_mot_de_passe_sheets(identifiant, nouveau_mdp):
     if not sh: return False
     try:
