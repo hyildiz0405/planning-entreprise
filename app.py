@@ -62,7 +62,7 @@ def envoyer_notification_email(destinataire, sujet, contenu_html):
         st.error(f"Erreur d'envoi de l'e-mail à {destinataire} : {e}")
         return False
 
-# --- FONCTION POUR GÉNÉRER LE PDF DU PLANNING SEMAINE (CORRIGÉE POUR LE FILTRAGE) ---
+# --- FONCTION POUR GÉNÉRER LE PDF DU PLANNING SEMAINE ---
 def generer_pdf_planning(jours, plannings, utilisateurs, employe_filtre):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -70,7 +70,7 @@ def generer_pdf_planning(jours, plannings, utilisateurs, employe_filtre):
     styles = getSampleStyleSheet()
     
     titre_texte = f"PLANNING DE LA SEMAINE — Du {jours[0]['date_texte']} au {jours[-1]['date_texte']}"
-    if employe_filtre != "Tous les employés" and employe_filtre in utilisateurs:
+    if employe_filtre != "Tous les utilisateurs" and employe_filtre in utilisateurs:
         titre_texte += f" — {utilisateurs[employe_filtre]['nom']}"
         
     style_titre = ParagraphStyle('Titre', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor("#0284C7"), spaceAfter=15, alignment=1)
@@ -80,8 +80,7 @@ def generer_pdf_planning(jours, plannings, utilisateurs, employe_filtre):
     headers = [f"{j['nom']}\n({j['date_texte']})" for j in jours]
     donnees_tableau = [headers]
     
-    # Normalisation du filtre pour comparaison robuste
-    filtre_cle = employe_filtre.strip().lower() if employe_filtre != "Tous les employés" else "Tous les employés"
+    filtre_cle = employe_filtre.strip().lower() if employe_filtre != "Tous les utilisateurs" else "Tous les utilisateurs"
 
     ligne_chantiers = []
     for jour in jours:
@@ -94,10 +93,9 @@ def generer_pdf_planning(jours, plannings, utilisateurs, employe_filtre):
                 d_deb = datetime.strptime(str(s["date_debut"]), "%Y-%m-%d").date()
                 d_fin = datetime.strptime(str(s["date_fin"]), "%Y-%m-%d").date()
                 if d_deb <= current_date <= d_fin:
-                    # Nettoyage et normalisation de la liste des participants
                     participants_clean = [str(p).strip().lower() for p in s.get("participants", [])]
                     
-                    if filtre_cle == "Tous les employés" or filtre_cle in participants_clean:
+                    if filtre_cle == "Tous les utilisateurs" or filtre_cle in participants_clean:
                         noms_equipe = ", ".join([utilisateurs[emp]["nom"] for emp in s.get("participants", []) if emp in utilisateurs])
                         info_mission = f"<b>{s['lieu']}</b><br/><i>Eq: {noms_equipe}</i><br/>{s['tache']}"
                         textes_du_jour.append(info_mission)
@@ -145,7 +143,7 @@ def generer_pdf_rapport(rapport):
     
     story.append(Paragraph(f"RAPPORT D'ACTIVITÉ - {rapport.get('projet', '')}", style_titre))
     story.append(Spacer(1, 10))
-    story.append(Paragraph("Employé :", style_label))
+    story.append(Paragraph("Utilisateur :", style_label))
     story.append(Paragraph(rapport.get('employe', 'Inconnu'), style_texte))
     story.append(Paragraph("Date de soumission :", style_label))
     story.append(Paragraph(rapport.get('date', ''), style_texte))
@@ -318,21 +316,24 @@ jours = [{"nom": noms_jours[i], "date_texte": (lundi_semaine + timedelta(days=i)
 # BARRE LATÉRALE À GAUCHE (SIDEBAR)
 # ==========================================
 st.sidebar.markdown(f"### Utilisateur : {user['nom']}")
-st.sidebar.markdown(f"**Rôle :** {user['role'].upper()}")
+
+# Affichage visuel du rôle : UTILISATEUR au lieu de EMPLOYE
+role_affiche = "ADMIN" if user["role"] == "admin" else "UTILISATEUR"
+st.sidebar.markdown(f"**Rôle :** {role_affiche}")
 st.sidebar.markdown("---")
 
 if user["role"] == "admin":
-    liste_employes_choix = ["Tous les employés"] + list(st.session_state["utilisateurs"].keys())
-    employe_filtre = st.sidebar.selectbox("Filtre pour le PDF :", options=liste_employes_choix, format_func=lambda x: "Tous les employés" if x == "Tous les employés" else st.session_state["utilisateurs"][x]["nom"], key="sidebar_emp_filtre")
+    liste_utilisateurs_choix = ["Tous les utilisateurs"] + list(st.session_state["utilisateurs"].keys())
+    employe_filtre = st.sidebar.selectbox("Filtre pour le PDF :", options=liste_utilisateurs_choix, format_func=lambda x: "Tous les utilisateurs" if x == "Tous les utilisateurs" else st.session_state["utilisateurs"][x]["nom"], key="sidebar_emp_filtre")
 else:
     employe_filtre = user_key
 
 st.sidebar.markdown("### Téléchargement")
 pdf_planning_data = generer_pdf_planning(jours, st.session_state["plannings"], st.session_state["utilisateurs"], employe_filtre)
 
-# Nom dynamique du fichier PDF pour forcer le rafraîchissement
-nom_employe_clean = "Tous" if employe_filtre == "Tous les employés" else st.session_state["utilisateurs"].get(employe_filtre, {}).get("nom", "Employe").replace(" ", "_")
-nom_fichier_pdf = f"Planning_{nom_employe_clean}_{jours[0]['date_texte'].replace('/', '-')}.pdf"
+# Nom dynamique du fichier PDF
+nom_user_clean = "Tous" if employe_filtre == "Tous les utilisateurs" else st.session_state["utilisateurs"].get(employe_filtre, {}).get("nom", "Utilisateur").replace(" ", "_")
+nom_fichier_pdf = f"Planning_{nom_user_clean}_{jours[0]['date_texte'].replace('/', '-')}.pdf"
 
 st.sidebar.download_button(
     label="📅 Télécharger le Planning (PDF)",
@@ -376,8 +377,8 @@ with onglet_actif[0]:
         st.date_input("Sélection de la date", key="date_calendrier", format="DD/MM/YYYY")
     with col_filtre_affichage:
         if user["role"] == "admin":
-            liste_affichage = ["Tous les employés"] + list(st.session_state["utilisateurs"].keys())
-            employe_affichage = st.selectbox("Filtrer l'affichage écran :", options=liste_affichage, format_func=lambda x: "Tous les employés" if x == "Tous les employés" else st.session_state["utilisateurs"][x]["nom"], key="screen_emp_filtre")
+            liste_affichage = ["Tous les utilisateurs"] + list(st.session_state["utilisateurs"].keys())
+            employe_affichage = st.selectbox("Filtrer l'affichage écran :", options=liste_affichage, format_func=lambda x: "Tous les utilisateurs" if x == "Tous les utilisateurs" else st.session_state["utilisateurs"][x]["nom"], key="screen_emp_filtre")
         else: employe_affichage = user_key
 
     cols = st.columns(7)
@@ -390,9 +391,9 @@ with onglet_actif[0]:
                 if not s.get("date_debut"): continue
                 try:
                     if datetime.strptime(str(s["date_debut"]), "%Y-%m-%d").date() <= current_date <= datetime.strptime(str(s["date_fin"]), "%Y-%m-%d").date():
-                        emp_aff_clean = employe_affichage.strip().lower() if employe_affichage != "Tous les employés" else "Tous les employés"
+                        emp_aff_clean = employe_affichage.strip().lower() if employe_affichage != "Tous les utilisateurs" else "Tous les utilisateurs"
                         participants_clean = [str(p).strip().lower() for p in s.get("participants", [])]
-                        if emp_aff_clean == "Tous les employés" or emp_aff_clean in participants_clean: shifts_du_jour.append(s)
+                        if emp_aff_clean == "Tous les utilisateurs" or emp_aff_clean in participants_clean: shifts_du_jour.append(s)
                 except: continue
             
             if shifts_du_jour:
@@ -434,7 +435,7 @@ if user["role"] == "admin":
                             
                         if "@" in email_destinataire:
                             corps_mail = f"""
-                            <h3>Bonjour {infos_employe.get('nom', 'Employé')},</h3>
+                            <h3>Bonjour {infos_employe.get('nom', 'Utilisateur')},</h3>
                             <p>Une nouvelle mission vient de vous être assignée sur le planning :</p>
                             <ul>
                                 <li><b>Lieu / Projet :</b> {lieu_input.upper()}</li>
@@ -446,7 +447,7 @@ if user["role"] == "admin":
                             """
                             envoyer_notification_email(email_destinataire, f"[Planning] Nouvelle affectation : {lieu_input.upper()}", corps_mail)
                             
-                    st.success("Mission synchronisée et notifications e-mails envoyées aux employés !")
+                    st.success("Mission synchronisée et notifications e-mails envoyées !")
                     time.sleep(0.5); st.rerun()
 
     with onglet_actif[2]:
@@ -462,11 +463,11 @@ if user["role"] == "admin":
 
     with onglet_actif[3]:
         st.markdown("<h2>Gestion des Comptes</h2>", unsafe_allow_html=True)
-        liste_comptes = [{"Nom complet": infos["nom"], "Identifiant": idf, "Téléphone": infos.get("tel",""), "Rôle": infos["role"].upper()} for idf, infos in st.session_state["utilisateurs"].items()]
+        liste_comptes = [{"Nom complet": infos["nom"], "Identifiant": idf, "Téléphone": infos.get("tel",""), "Rôle": "ADMIN" if infos["role"] == "admin" else "UTILISATEUR"} for idf, infos in st.session_state["utilisateurs"].items()]
         st.dataframe(pd.DataFrame(liste_comptes), use_container_width=True, hide_index=True)
 
 # ==========================================
-# CÔTÉ EMPLOYÉ - ENVOI DE RAPPORT ET NOTIFICATION ADMIN
+# CÔTÉ UTILISATEUR NON-ADMIN - ENVOI DE RAPPORT
 # ==========================================
 else:
     with onglet_actif[1]:
@@ -485,7 +486,7 @@ else:
                     admin_principal = "appli.planning0@gmail.com"
                     corps_admin_mail = f"""
                     <h3>Nouveau rapport d'activité reçu</h3>
-                    <p><b>Employé :</b> {user["nom"]}</p>
+                    <p><b>Utilisateur :</b> {user["nom"]}</p>
                     <p><b>Chantier / Projet :</b> {projet_nom.upper()}</p>
                     <p><b>Date d'envoi :</b> {date_now_str}</p>
                     <hr/>
