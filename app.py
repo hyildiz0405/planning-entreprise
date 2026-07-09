@@ -62,7 +62,7 @@ def envoyer_notification_email(destinataire, sujet, contenu_html):
         st.error(f"Erreur d'envoi de l'e-mail à {destinataire} : {e}")
         return False
 
-# --- FONCTION POUR GÉNÉRER LE PDF DU PLANNING SEMAINE ---
+# --- FONCTION POUR GÉNÉRER LE PDF DU PLANNING SEMAINE (CORRIGÉE POUR LE FILTRAGE) ---
 def generer_pdf_planning(jours, plannings, utilisateurs, employe_filtre):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -71,7 +71,7 @@ def generer_pdf_planning(jours, plannings, utilisateurs, employe_filtre):
     
     titre_texte = f"PLANNING DE LA SEMAINE — Du {jours[0]['date_texte']} au {jours[-1]['date_texte']}"
     if employe_filtre != "Tous les employés" and employe_filtre in utilisateurs:
-        titre_texte += f" ({utilisateurs[employe_filtre]['nom']})"
+        titre_texte += f" — {utilisateurs[employe_filtre]['nom']}"
         
     style_titre = ParagraphStyle('Titre', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor("#0284C7"), spaceAfter=15, alignment=1)
     story.append(Paragraph(titre_texte, style_titre))
@@ -80,6 +80,9 @@ def generer_pdf_planning(jours, plannings, utilisateurs, employe_filtre):
     headers = [f"{j['nom']}\n({j['date_texte']})" for j in jours]
     donnees_tableau = [headers]
     
+    # Normalisation du filtre pour comparaison robuste
+    filtre_cle = employe_filtre.strip().lower() if employe_filtre != "Tous les employés" else "Tous les employés"
+
     ligne_chantiers = []
     for jour in jours:
         current_date = datetime.strptime(jour["date_str"], "%Y-%m-%d").date()
@@ -91,7 +94,10 @@ def generer_pdf_planning(jours, plannings, utilisateurs, employe_filtre):
                 d_deb = datetime.strptime(str(s["date_debut"]), "%Y-%m-%d").date()
                 d_fin = datetime.strptime(str(s["date_fin"]), "%Y-%m-%d").date()
                 if d_deb <= current_date <= d_fin:
-                    if employe_filtre == "Tous les employés" or employe_filtre in s.get("participants", []):
+                    # Nettoyage et normalisation de la liste des participants
+                    participants_clean = [str(p).strip().lower() for p in s.get("participants", [])]
+                    
+                    if filtre_cle == "Tous les employés" or filtre_cle in participants_clean:
                         noms_equipe = ", ".join([utilisateurs[emp]["nom"] for emp in s.get("participants", []) if emp in utilisateurs])
                         info_mission = f"<b>{s['lieu']}</b><br/><i>Eq: {noms_equipe}</i><br/>{s['tache']}"
                         textes_du_jour.append(info_mission)
@@ -159,8 +165,8 @@ def charger_utilisateurs_sheets():
         if not records: return UTILISATEURS_PAR_DEFAUT
         users_dict = {}
         for r in records:
-            users_dict[str(r["identifiant"])] = {
-                "nom": r["nom"], "role": r["role"], "mdp": str(r["mdp"]), "tel": str(r["tel"]), "email_contact": r["email_contact"]
+            users_dict[str(r["identifiant"]).strip().lower()] = {
+                "nom": r["nom"], "role": str(r["role"]).strip().lower(), "mdp": str(r["mdp"]), "tel": str(r["tel"]), "email_contact": r["email_contact"]
             }
         return users_dict
     except Exception: return UTILISATEURS_PAR_DEFAUT
@@ -180,7 +186,7 @@ def charger_plannings_sheets():
         if not records: return PLANNINGS_PAR_DEFAUT
         liste_plannings = []
         for r in records:
-            participants = [p.strip() for p in str(r["participants"]).split(",") if p.strip()]
+            participants = [p.strip().lower() for p in str(r["participants"]).split(",") if p.strip()]
             liste_plannings.append({
                 "id": r["id"], "participants": participants, "date_debut": str(r["date_debut"]),
                 "date_fin": str(r["date_fin"]), "lieu": r["lieu"], "tache": r["tache"], "statut": r["statut"]
@@ -251,7 +257,6 @@ if "user_connecte" not in st.session_state:
 if st.session_state["user_connecte"] is None:
     onglet_auth = st.tabs(["Connexion", "Créer un compte"])
     
-    # Onglet 1 : Connexion
     with onglet_auth[0]:
         st.subheader("Connexion")
         type_connexion = st.radio("Se connecter avec :", ["Email", "Numéro de téléphone"], horizontal=True, key="type_conn")
@@ -270,11 +275,10 @@ if st.session_state["user_connecte"] is None:
                 time.sleep(0.5); st.rerun()
             else: st.error("Identifiants ou mot de passe incorrects.")
             
-    # Onglet 2 : Créer un compte (Intégré et opérationnel)
     with onglet_auth[1]:
         st.subheader("Créer un compte")
         with st.form("form_inscription", clear_on_submit=True):
-            nouvel_identifiant = st.text_input("Adresse Email").strip().lower()
+            nouvel_identifiant = st.text_input("Adresse Email (Sert d'identifiant)").strip().lower()
             nouveau_nom = st.text_input("Nom et Prénom")
             nouveau_tel = st.text_input("Numéro de téléphone")
             nouveau_mdp = st.text_input("Choisissez un mot de passe", type="password")
@@ -284,7 +288,6 @@ if st.session_state["user_connecte"] is None:
                     if nouvel_identifiant in st.session_state["utilisateurs"]:
                         st.error("Cet identifiant existe déjà.")
                     else:
-                        # Rôle employé attribué par défaut à l'inscription
                         infos_nouvel_user = {
                             "nom": nouveau_nom,
                             "role": "employe",
@@ -292,7 +295,6 @@ if st.session_state["user_connecte"] is None:
                             "tel": nouveau_tel,
                             "email_contact": nouvel_identifiant
                         }
-                        # Sauvegarde locale session + écriture Google Sheets
                         st.session_state["utilisateurs"][nouvel_identifiant] = infos_nouvel_user
                         sauvegarder_utilisateur_sheets(nouvel_identifiant, infos_nouvel_user)
                         
@@ -313,15 +315,13 @@ noms_jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dima
 jours = [{"nom": noms_jours[i], "date_texte": (lundi_semaine + timedelta(days=i)).strftime('%d/%m'), "date_str": str(lundi_semaine + timedelta(days=i))} for i in range(7)]
 
 # ==========================================
-# CONFIGURATION DE LA BARRE LATÉRALE À GAUCHE (SIDEBAR)
+# BARRE LATÉRALE À GAUCHE (SIDEBAR)
 # ==========================================
 st.sidebar.markdown(f"### Utilisateur : {user['nom']}")
 st.sidebar.markdown(f"**Rôle :** {user['role'].upper()}")
 st.sidebar.markdown("---")
 
 if user["role"] == "admin":
-    if "sidebar_emp_filtre" not in st.session_state:
-        st.session_state["sidebar_emp_filtre"] = "Tous les employés"
     liste_employes_choix = ["Tous les employés"] + list(st.session_state["utilisateurs"].keys())
     employe_filtre = st.sidebar.selectbox("Filtre pour le PDF :", options=liste_employes_choix, format_func=lambda x: "Tous les employés" if x == "Tous les employés" else st.session_state["utilisateurs"][x]["nom"], key="sidebar_emp_filtre")
 else:
@@ -329,10 +329,15 @@ else:
 
 st.sidebar.markdown("### Téléchargement")
 pdf_planning_data = generer_pdf_planning(jours, st.session_state["plannings"], st.session_state["utilisateurs"], employe_filtre)
+
+# Nom dynamique du fichier PDF pour forcer le rafraîchissement
+nom_employe_clean = "Tous" if employe_filtre == "Tous les employés" else st.session_state["utilisateurs"].get(employe_filtre, {}).get("nom", "Employe").replace(" ", "_")
+nom_fichier_pdf = f"Planning_{nom_employe_clean}_{jours[0]['date_texte'].replace('/', '-')}.pdf"
+
 st.sidebar.download_button(
     label="📅 Télécharger le Planning (PDF)",
     data=pdf_planning_data,
-    file_name=f"Planning_Semaine_{jours[0]['date_texte'].replace('/', '-')}.pdf",
+    file_name=nom_fichier_pdf,
     mime="application/pdf",
     use_container_width=True
 )
@@ -385,7 +390,9 @@ with onglet_actif[0]:
                 if not s.get("date_debut"): continue
                 try:
                     if datetime.strptime(str(s["date_debut"]), "%Y-%m-%d").date() <= current_date <= datetime.strptime(str(s["date_fin"]), "%Y-%m-%d").date():
-                        if employe_affichage == "Tous les employés" or employe_affichage in s.get("participants", []): shifts_du_jour.append(s)
+                        emp_aff_clean = employe_affichage.strip().lower() if employe_affichage != "Tous les employés" else "Tous les employés"
+                        participants_clean = [str(p).strip().lower() for p in s.get("participants", [])]
+                        if emp_aff_clean == "Tous les employés" or emp_aff_clean in participants_clean: shifts_du_jour.append(s)
                 except: continue
             
             if shifts_du_jour:
@@ -414,11 +421,10 @@ if user["role"] == "admin":
             
             if st.form_submit_button("Planifier", use_container_width=True):
                 if equipe_sel and lieu_input and tache_input:
-                    nouvelle_mission = {"id": int(time.time()), "participants": equipe_sel, "date_debut": str(date_debut_sel), "date_fin": str(date_fin_sel), "lieu": lieu_input.upper(), "tache": tache_input, "statut": statut_selection}
+                    nouvelle_mission = {"id": int(time.time()), "participants": [p.strip().lower() for p in equipe_sel], "date_debut": str(date_debut_sel), "date_fin": str(date_fin_sel), "lieu": lieu_input.upper(), "tache": tache_input, "statut": statut_selection}
                     st.session_state["plannings"].append(nouvelle_mission)
                     sauvegarder_planning_sheets(nouvelle_mission)
                     
-                    # --- DÉCLENCHEMENT NOTIFICATIONS EMAILS AUX EMPLOYÉS AFFECTÉS ---
                     for emp_key in equipe_sel:
                         infos_employe = st.session_state["utilisateurs"].get(emp_key, {})
                         email_destinataire = infos_employe.get("email_contact", "").strip()
@@ -476,7 +482,6 @@ else:
                     st.session_state["rapports"].append(nouveau_rapport)
                     sauvegarder_rapport_sheets(nouveau_rapport)
                     
-                    # --- NOTIFICATION DE RAPPORT ENVOYÉ À L'ADMINISTRATEUR PRINCIPAL ---
                     admin_principal = "appli.planning0@gmail.com"
                     corps_admin_mail = f"""
                     <h3>Nouveau rapport d'activité reçu</h3>
