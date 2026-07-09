@@ -315,7 +315,7 @@ jours = [{"nom": noms_jours[i], "date_texte": (lundi_semaine + timedelta(days=i)
 # ==========================================
 # BARRE LATÉRALE À GAUCHE (SIDEBAR)
 # ==========================================
-st.sidebar.markdown(f"### Utilisateur : {user['nom']}")
+st.sidebar.markdown(f"{user['nom']}")
 
 # Affichage visuel du rôle : UTILISATEUR au lieu de EMPLOYE
 role_affiche = "ADMIN" if user["role"] == "admin" else "UTILISATEUR"
