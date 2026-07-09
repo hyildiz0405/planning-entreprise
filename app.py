@@ -173,8 +173,30 @@ def sauvegarder_utilisateur_sheets(identifiant, infos):
     if not sh: return
     try:
         ws = sh.worksheet("utilisateurs")
-        ws.append_row([identifiant, infos["nom"], infos["role"], infos["mdp"], infos["tel"], infos["email_contact"]])
+        # Alignement strict des 6 colonnes (A à F) pour éviter le décalage
+        ligne = [
+            str(identifiant).strip().lower(),
+            str(infos.get("nom", "")),
+            str(infos.get("role", "employe")),
+            str(infos.get("mdp", "")),
+            str(infos.get("tel", "")),
+            str(infos.get("email_contact", ""))
+        ]
+        ws.append_row(ligne, value_input_option='USER_ENTERED')
     except Exception as e: st.error(f"Erreur d'écriture utilisateur : {e}")
+
+def modifier_mot_de_passe_sheets(identifiant, nouveau_mdp):
+    if not sh: return False
+    try:
+        ws = sh.worksheet("utilisateurs")
+        cellule = ws.find(str(identifiant).strip().lower(), in_column=1)
+        if cellule:
+            ws.update_cell(cellule.row, 4, str(nouveau_mdp)) # Colonne 4 = mdp (D)
+            return True
+        return False
+    except Exception as e:
+        st.error(f"Erreur lors de la mise à jour du mot de passe dans Google Sheets : {e}")
+        return False
 
 def charger_plannings_sheets():
     if not sh: return PLANNINGS_PAR_DEFAUT
@@ -320,6 +342,31 @@ st.sidebar.markdown(f"{user['nom']}")
 # Affichage visuel du rôle : UTILISATEUR au lieu de EMPLOYE
 role_affiche = "ADMIN" if user["role"] == "admin" else "UTILISATEUR"
 st.sidebar.markdown(f"**Rôle :** {role_affiche}")
+st.sidebar.markdown("---")
+
+# --- MODULE CHANGEMENT DE MOT DE PASSE (SIDEBAR) ---
+with st.sidebar.expander("🔑 Changer mon mot de passe"):
+    with st.form("form_changement_mdp", clear_on_submit=True):
+        ancien_mdp = st.text_input("Ancien mot de passe", type="password")
+        nouveau_mdp = st.text_input("Nouveau mot de passe", type="password")
+        confirm_mdp = st.text_input("Confirmer le nouveau mot de passe", type="password")
+        
+        if st.form_submit_button("Modifier", use_container_width=True):
+            if user["mdp"] != ancien_mdp:
+                st.error("L'ancien mot de passe est incorrect.")
+            elif not nouveau_mdp:
+                st.warning("Veuillez saisir un mot de passe.")
+            elif nouveau_mdp != confirm_mdp:
+                st.error("Les mots de passe ne correspondent pas.")
+            else:
+                st.session_state["utilisateurs"][user_key]["mdp"] = nouveau_mdp
+                st.session_state["user_connecte"]["mdp"] = nouveau_mdp
+                
+                if modifier_mot_de_passe_sheets(user_key, nouveau_mdp):
+                    st.success("Mot de passe modifié avec succès !")
+                else:
+                    st.error("Erreur lors de la synchronisation.")
+
 st.sidebar.markdown("---")
 
 if user["role"] == "admin":
