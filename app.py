@@ -379,7 +379,7 @@ role_affiche = "ADMIN" if user["role"] == "admin" else "UTILISATEUR"
 st.sidebar.markdown(f"**Rôle :** {role_affiche}")
 st.sidebar.markdown("---")
 
-with st.sidebar.expander("🔑 Changer mon mot de passe"):
+with st.sidebar.expander("Changer mon mot de passe"):
     with st.form("form_changement_mdp", clear_on_submit=True):
         ancien_mdp = st.text_input("Ancien mot de passe", type="password")
         nouveau_mdp = st.text_input("Nouveau mot de passe", type="password")
@@ -552,11 +552,11 @@ if user["role"] == "admin":
     # NOUVEL ONGLET : GESTION DES CHANTIERS (ADMIN)
     # ==========================================
     with onglet_actif[3]:
-        st.markdown("<h2>🏗️ Gestion des Chantiers / Projets</h2>", unsafe_allow_html=True)
+        st.markdown("<h2>Gestion des Chantiers / Projets</h2>", unsafe_allow_html=True)
         
         with st.form("form_ajout_chantier", clear_on_submit=True):
-            st.subheader("Ajouter un nouveau chantier à la liste")
-            nouveau_nom = st.text_input("Nom du chantier (ex: CHANTIER LYON)").strip()
+            st.subheader("Ajouter un nouveau chantier")
+            nouveau_nom = st.text_input("Nom du chantier").strip()
             nouvelle_desc = st.text_area("Description / Notes (Optionnel)").strip()
             
             if st.form_submit_button("Enregistrer le chantier", use_container_width=True):
@@ -568,7 +568,7 @@ if user["role"] == "admin":
                     st.error("Le nom du chantier ne peut pas être vide.")
                     
         st.markdown("---")
-        st.subheader("Chantiers actuellement enregistrés :")
+        st.subheader("Chantiers actuellement enregistrés")
         liste_affichage_chantiers = charger_chantiers_sheets()
         for ch in liste_affichage_chantiers:
             st.markdown(f"- **{ch}**")
