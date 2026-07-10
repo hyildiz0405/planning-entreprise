@@ -164,7 +164,6 @@ def charger_utilisateurs_sheets():
         
         users_dict = {}
         for r in records:
-            # Accepte aussi bien 'identifiant' que 'email' en première colonne
             idf = str(r.get("identifiant") or r.get("email") or r.get("email_contact", "")).strip().lower()
             if not idf:
                 continue
@@ -185,7 +184,6 @@ def sauvegarder_utilisateur_sheets(identifiant, infos):
     if not sh: return
     try:
         ws = sh.worksheet("utilisateurs")
-        # Structure stricte pour vos colonnes : identifiant, nom, role, mdp, tel, email_contact
         ligne = [
             str(identifiant).strip().lower(),
             str(infos.get("nom", "")),
@@ -204,7 +202,7 @@ def modifier_mot_de_passe_sheets(identifiant, nouveau_mdp):
         ws = sh.worksheet("utilisateurs")
         cellule = ws.find(str(identifiant).strip().lower(), in_column=1)
         if cellule:
-            ws.update_cell(cellule.row, 4, str(nouveau_mdp)) # Colonne 4 = mdp (D)
+            ws.update_cell(cellule.row, 4, str(nouveau_mdp))
             return True
         return False
     except Exception as e:
@@ -249,6 +247,29 @@ def sauvegarder_rapport_sheets(rapport):
         ws.append_row([rapport["employe"], rapport["date"], rapport["projet"], rapport["contenu"]])
     except Exception as e: st.error(f"Erreur d'écriture rapport : {e}")
 
+# --- NOUVELLES FONCTIONS POUR LA GESTION DES CHANTIERS ---
+def charger_chantiers_sheets():
+    if not sh: return CHANTIERS_PAR_DEFAUT
+    try:
+        ws = sh.worksheet("chantiers")
+        records = ws.get_all_records()
+        chantiers_list = []
+        for r in records:
+            nom = str(r.get("nom_chantier", "")).strip()
+            if nom:
+                chantiers_list.append(nom)
+        return chantiers_list if chantiers_list else CHANTIERS_PAR_DEFAUT
+    except Exception:
+        return CHANTIERS_PAR_DEFAUT
+
+def sauvegarder_chantier_sheets(nom_chantier, description=""):
+    if not sh: return
+    try:
+        ws = sh.worksheet("chantiers")
+        ws.append_row([str(nom_chantier).strip().upper(), str(description).strip()], value_input_option='USER_ENTERED')
+    except Exception as e:
+        st.error(f"Erreur d'écriture du chantier : {e}")
+
 # --- VALEURS PAR DÉFAUT ---
 UTILISATEURS_PAR_DEFAUT = {
     "admin@entreprise.com": {"nom": "Admin", "role": "admin", "mdp": "admin123", "tel": "", "email_contact": "admin@entreprise.com"},    
@@ -262,6 +283,8 @@ UTILISATEURS_PAR_DEFAUT = {
 PLANNINGS_PAR_DEFAUT = [
     {"id": 1, "participants": ["sb@arhen.energy"], "date_debut": str(datetime.now().date()), "date_fin": str(datetime.now().date() + timedelta(days=2)), "lieu": "CHANTIER PARIS", "tache": "Installation des modules photovoltaïques", "statut": "Production"}
 ]
+
+CHANTIERS_PAR_DEFAUT = ["CHANTIER STANDARD", "DÉPANNAGE"]
 
 if "utilisateurs" not in st.session_state: st.session_state["utilisateurs"] = charger_utilisateurs_sheets()
 if "plannings" not in st.session_state: st.session_state["plannings"] = charger_plannings_sheets()
@@ -352,12 +375,10 @@ jours = [{"nom": noms_jours[i], "date_texte": (lundi_semaine + timedelta(days=i)
 # ==========================================
 st.sidebar.markdown(f"{user['nom']}")
 
-# Affichage visuel du rôle : UTILISATEUR au lieu de EMPLOYE
 role_affiche = "ADMIN" if user["role"] == "admin" else "UTILISATEUR"
 st.sidebar.markdown(f"**Rôle :** {role_affiche}")
 st.sidebar.markdown("---")
 
-# --- MODULE CHANGEMENT DE MOT DE PASSE (SIDEBAR) ---
 with st.sidebar.expander("🔑 Changer mon mot de passe"):
     with st.form("form_changement_mdp", clear_on_submit=True):
         ancien_mdp = st.text_input("Ancien mot de passe", type="password")
@@ -391,7 +412,6 @@ else:
 st.sidebar.markdown("### Téléchargement")
 pdf_planning_data = generer_pdf_planning(jours, st.session_state["plannings"], st.session_state["utilisateurs"], employe_filtre)
 
-# Nom dynamique du fichier PDF
 nom_user_clean = "Tous" if employe_filtre == "Tous les utilisateurs" else st.session_state["utilisateurs"].get(employe_filtre, {}).get("nom", "Utilisateur").replace(" ", "_")
 nom_fichier_pdf = f"Planning_{nom_user_clean}_{jours[0]['date_texte'].replace('/', '-')}.pdf"
 
@@ -423,8 +443,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-if user["role"] == "admin": onglet_actif = st.tabs(["Calendrier", "Planifier", "Rapports Reçus", "Gestion des Comptes"])
-else: onglet_actif = st.tabs(["Calendrier", "Envoyer un Rapport"])
+if user["role"] == "admin": 
+    onglet_actif = st.tabs(["Calendrier", "Planifier", "Rapports Reçus", "Gestion des Chantiers", "Gestion des Comptes"])
+else: 
+    onglet_actif = st.tabs(["Calendrier", "Envoyer un Rapport"])
 
 # ==========================================
 # ONGLET 1 : CALENDRIER
@@ -469,6 +491,10 @@ with onglet_actif[0]:
 if user["role"] == "admin":
     with onglet_actif[1]:
         st.markdown("<h2>Planifier une Mission</h2>", unsafe_allow_html=True)
+        
+        # Chargement des chantiers
+        liste_chantiers_disponibles = charger_chantiers_sheets()
+        
         with st.form("form_centre_shift", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
@@ -476,7 +502,8 @@ if user["role"] == "admin":
                 date_debut_sel = st.date_input("Date de DÉBUT", datetime.now().date())
                 date_fin_sel = st.date_input("Date de FIN", datetime.now().date())
             with col2:
-                lieu_input = st.text_input("Lieu ou Nom du projet")
+                # LISTE DÉROULANTE POUR SÉLECTIONNER LE CHANTIER SANS TOUT TAPER
+                lieu_input = st.selectbox("Sélectionner le chantier / projet", options=liste_chantiers_disponibles)
                 statut_selection = st.selectbox("Statut", ["Production", "Planifié", "Urgent"])
             tache_input = st.text_area("Descriptif")
             
@@ -521,7 +548,32 @@ if user["role"] == "admin":
                     st.download_button(label="📥 Télécharger ce rapport en PDF", data=pdf_data, file_name=f"Rapport_{r.get('projet', 'chantier')}.pdf", mime="application/pdf", key=f"btn_pdf_{idx}")
         else: st.info("Aucun rapport reçu.")
 
+    # ==========================================
+    # NOUVEL ONGLET : GESTION DES CHANTIERS (ADMIN)
+    # ==========================================
     with onglet_actif[3]:
+        st.markdown("<h2>🏗️ Gestion des Chantiers / Projets</h2>", unsafe_allow_html=True)
+        
+        with st.form("form_ajout_chantier", clear_on_submit=True):
+            st.subheader("Ajouter un nouveau chantier à la liste")
+            nouveau_nom = st.text_input("Nom du chantier (ex: CHANTIER LYON)").strip()
+            nouvelle_desc = st.text_area("Description / Notes (Optionnel)").strip()
+            
+            if st.form_submit_button("Enregistrer le chantier", use_container_width=True):
+                if nouveau_nom:
+                    sauvegarder_chantier_sheets(nouveau_nom, nouvelle_desc)
+                    st.success(f"Le chantier '{nouveau_nom.upper()}' a été ajouté avec succès !")
+                    time.sleep(0.5); st.rerun()
+                else:
+                    st.error("Le nom du chantier ne peut pas être vide.")
+                    
+        st.markdown("---")
+        st.subheader("Chantiers actuellement enregistrés :")
+        liste_affichage_chantiers = charger_chantiers_sheets()
+        for ch in liste_affichage_chantiers:
+            st.markdown(f"- **{ch}**")
+
+    with onglet_actif[4]:
         st.markdown("<h2>Gestion des Comptes</h2>", unsafe_allow_html=True)
         liste_comptes = [{"Nom complet": infos["nom"], "Identifiant": idf, "Téléphone": infos.get("tel",""), "Rôle": "ADMIN" if infos["role"] == "admin" else "UTILISATEUR"} for idf, infos in st.session_state["utilisateurs"].items()]
         st.dataframe(pd.DataFrame(liste_comptes), use_container_width=True, hide_index=True)
@@ -532,8 +584,10 @@ if user["role"] == "admin":
 else:
     with onglet_actif[1]:
         st.markdown("<h2>Envoyer un Rapport d'Activité</h2>", unsafe_allow_html=True)
+        liste_chantiers_user = charger_chantiers_sheets()
+        
         with st.form("form_rapport_employe", clear_on_submit=True):
-            projet_nom = st.text_input("Nom du chantier / Lieu")
+            projet_nom = st.selectbox("Sélectionner le chantier / Lieu", options=liste_chantiers_user)
             rapport_texte = st.text_area("Détails de l'avancement")
             
             if st.form_submit_button("Envoyer le rapport", use_container_width=True):
